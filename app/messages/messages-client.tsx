@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 
 type ContactRequest = {
@@ -19,6 +19,7 @@ type Message = {
   read_at: string | null;
   edited_at: string | null;
   reply_to_id: string | null;
+  voice_path: string | null;
 };
 
 export default function MessagesClient({ userId }: { userId: string }) {
@@ -30,6 +31,11 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [voiceUrls, setVoiceUrls] = useState<Record<string, string>>({});
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
@@ -70,7 +76,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const loadMessages = useCallback(async (person: Profile) => {
     const { data, error } = await supabase
       .from("messages")
-      .select("id, sender_id, recipient_id, body, created_at, read_at, edited_at, reply_to_id")
+      .select("id, sender_id, recipient_id, body, created_at, read_at, edited_at, reply_to_id, voice_path")
       .or(`and(sender_id.eq.${userId},recipient_id.eq.${person.id}),and(sender_id.eq.${person.id},recipient_id.eq.${userId})`)
       .order("created_at", { ascending: true });
     if (error) {
@@ -80,6 +86,14 @@ export default function MessagesClient({ userId }: { userId: string }) {
     }
     const rows = (data ?? []) as Message[];
     setMessages(rows);
+    const paths = rows.filter((message) => message.voice_path).map((message) => message.voice_path as string);
+    const signedEntries = await Promise.all(paths.map(async (path) => {
+      const { data: signed } = await supabase.storage.from("connect-voice-messages").createSignedUrl(path, 3600);
+      return signed?.signedUrl ? [path, signed.signedUrl] as const : null;
+    }));
+    const urls: Record<string, string> = {};
+    signedEntries.forEach((entry) => { if (entry) urls[entry[0]] = entry[1]; });
+    setVoiceUrls(urls);
     const unreadIds = rows.filter((m) => m.recipient_id === userId && m.read_at === null).map((m) => m.id);
     if (unreadIds.length) {
       const readAt = new Date().toISOString();
@@ -94,6 +108,10 @@ export default function MessagesClient({ userId }: { userId: string }) {
   }, [supabase, userId]);
 
   useEffect(() => { void loadContacts(); }, [loadContacts]);
+  useEffect(() => () => {
+    recorderRef.current?.stop();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
   useEffect(() => {
     if (selected) void loadMessages(selected);
     else setMessages([]);
@@ -121,6 +139,87 @@ export default function MessagesClient({ userId }: { userId: string }) {
     setDraft("");
     setReplyingTo(null);
     await loadMessages(selected);
+  }
+
+  async function recordVoiceMessage() {
+    if (!selected) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setProblem(true);
+      setNotice("Voice recording is not supported by this browser. Please use a recent version of Chrome.");
+      return;
+    }
+    if (recording) {
+      recorderRef.current?.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg", "audio/mp4"]
+        .find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        setRecording(false);
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        if (!blob.size) {
+          setNotice("No audio was recorded. Please try again.");
+          return;
+        }
+        if (blob.size > 20 * 1024 * 1024) {
+          setProblem(true);
+          setNotice("That recording is too large. Please record a shorter voice message.");
+          return;
+        }
+        setSending(true);
+        setNotice("Uploading voice message…");
+        setProblem(false);
+        const extension = blob.type.includes("ogg") ? "ogg" : blob.type.includes("mp4") ? "mp4" : "webm";
+        const filePath = `${userId}/${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from("connect-voice-messages")
+          .upload(filePath, blob, { contentType: blob.type, upsert: false });
+        if (uploadError) {
+          setSending(false);
+          setProblem(true);
+          setNotice(uploadError.message);
+          return;
+        }
+        const { error: insertError } = await supabase.from("messages").insert({
+          sender_id: userId,
+          recipient_id: selected.id,
+          body: "Voice message",
+          voice_path: filePath,
+          reply_to_id: replyingTo?.id ?? null,
+        });
+        if (insertError) {
+          await supabase.storage.from("connect-voice-messages").remove([filePath]);
+          setSending(false);
+          setProblem(true);
+          setNotice(insertError.message);
+          return;
+        }
+        setSending(false);
+        setReplyingTo(null);
+        setNotice("Voice message sent.");
+        await loadMessages(selected);
+      };
+      recorder.start();
+      setRecording(true);
+      setNotice("Recording… press Stop recording when you're finished.");
+      setProblem(false);
+    } catch (error) {
+      setProblem(true);
+      setNotice(error instanceof Error ? error.message : "Could not access the microphone. Check your browser permissions.");
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
   }
 
   async function saveEdit(message: Message) {
@@ -194,6 +293,11 @@ export default function MessagesClient({ userId }: { userId: string }) {
                   <div key={message.id} style={{ justifySelf: mine ? "end" : "start", maxWidth: "85%", minWidth: 120, background: mine ? "#382451" : "#211b2b", border: "1px solid var(--line)", borderRadius: 14, padding: "10px 13px" }}>
                     {repliedMessage && <div style={{ borderLeft: "3px solid #b58ae8", paddingLeft: 8, marginBottom: 8, opacity: .85, fontSize: ".82rem" }}><strong>{repliedMessage.sender_id === userId ? "You" : displayName(selected)}</strong><div style={{ whiteSpace: "pre-wrap", overflow: "hidden", textOverflow: "ellipsis" }}>{repliedMessage.body}</div></div>}
                     {message.reply_to_id && !repliedMessage && <div className="muted" style={{ fontSize: ".8rem", marginBottom: 6 }}>Reply to an unavailable message</div>}
+                    {message.voice_path ? (
+                      voiceUrls[message.voice_path] ? (
+                        <audio controls preload="none" src={voiceUrls[message.voice_path]} style={{ display: "block", maxWidth: "100%" }} />
+                      ) : <span className="muted">Loading voice message…</span>
+                    ) : null}
                     {editingId === message.id ? (
                       <div style={{ display: "grid", gap: 8 }}>
                         <textarea value={editDraft} onChange={(event) => setEditDraft(event.target.value)} maxLength={5000} rows={3}
@@ -226,11 +330,14 @@ export default function MessagesClient({ userId }: { userId: string }) {
             </div>
             <form onSubmit={sendMessage} style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
               {replyingTo && <div style={{ display: "flex", justifyContent: "space-between", gap: 8, background: "#211b2b", borderLeft: "3px solid #b58ae8", padding: 8, borderRadius: 8 }}><div><strong>Replying to {replyingTo.sender_id === userId ? "your message" : displayName(selected)}</strong><div className="muted">{replyingTo.body.slice(0, 120)}</div></div><button type="button" className="button secondary" onClick={() => setReplyingTo(null)}>Cancel</button></div>}
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={5000}
                 placeholder="Write a message…" aria-label="Write a message"
                 style={{ flex: 1, minWidth: 0, padding: 12, borderRadius: 10, border: "1px solid var(--line)", background: "#0f0c16", color: "white" }} />
               <button className="button" type="submit" disabled={sending || !draft.trim()}>{sending ? "Sending…" : "Send"}</button>
+              <button className="button secondary" type="button" onClick={() => void recordVoiceMessage()} disabled={sending}>
+                {recording ? "Stop recording" : "Record voice"}
+              </button>
               </div>
             </form>
           </>
