@@ -25,6 +25,7 @@ export default async function HomePage() {
           <nav style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <Link className="button secondary" href="/profile">Profile</Link>
             <Link className="button" href="/contacts">Contacts</Link>
+            <Link className="button" href="/messages">Messages</Link>
             <form action={signOut}><button className="button secondary" type="submit">Sign out</button></form>
           </nav>
         ) : (
