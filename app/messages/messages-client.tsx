@@ -227,6 +227,23 @@ export default function MessagesClient({ userId }: { userId: string }) {
 
   useEffect(() => {
     if (!selected) return;
+    const refreshReactions = async () => {
+      const { data, error } = await supabase.from("message_reactions")
+        .select("id, message_id, user_id, emoji")
+        .in("message_id", messages.map((message) => message.id));
+      if (!error) setReactions((data ?? []) as MessageReaction[]);
+    };
+    const channel = supabase
+      .channel(`connect-reactions-${[userId, selected.id].sort().join("-")}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, () => {
+        void refreshReactions();
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [messages, selected, supabase, userId]);
+
+  useEffect(() => {
+    if (!selected) return;
     const channel = supabase
       .channel(`connect-messages-${[userId, selected.id].sort().join("-")}`)
       .on(
