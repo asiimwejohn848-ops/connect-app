@@ -39,6 +39,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
+  const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
   const [contactTyping, setContactTyping] = useState(false);
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -138,6 +139,10 @@ export default function MessagesClient({ userId }: { userId: string }) {
     }
     const rows = (data ?? []) as Message[];
     setMessages(rows);
+    if (rows.length) {
+      const { data: pins } = await supabase.from("message_pins").select("message_id").eq("user_id", userId).in("message_id", rows.map((message) => message.id));
+      setPinnedMessageIds((pins ?? []).map((pin: { message_id: string }) => pin.message_id));
+    } else setPinnedMessageIds([]);
     if (rows.length) {
       const { data: reactionRows } = await supabase.from("message_reactions")
         .select("id, message_id, user_id, emoji")
@@ -271,6 +276,22 @@ export default function MessagesClient({ userId }: { userId: string }) {
       if (error) { setProblem(true); setNotice(error.message); return; }
       if (data) setReactions((current) => [...current, data as MessageReaction]);
     }
+  }
+
+  async function togglePin(messageId: string) {
+    const isPinned = pinnedMessageIds.includes(messageId);
+    if (isPinned) {
+      const { error } = await supabase.from("message_pins").delete().eq("message_id", messageId).eq("user_id", userId);
+      if (error) { setProblem(true); setNotice(error.message); return; }
+      setPinnedMessageIds((current) => current.filter((id) => id !== messageId));
+      setNotice("Message unpinned.");
+    } else {
+      const { error } = await supabase.from("message_pins").insert({ message_id: messageId, user_id: userId });
+      if (error) { setProblem(true); setNotice(error.message); return; }
+      setPinnedMessageIds((current) => [...current, messageId]);
+      setNotice("Message pinned for you.");
+    }
+    setProblem(false);
   }
 
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
@@ -630,6 +651,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
                           })}
                         </div>
                         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                          <button type="button" className="button secondary" onClick={() => void togglePin(message.id)}>{pinnedMessageIds.includes(message.id) ? "Unpin" : "Pin"}</button>
                           <button type="button" className="button secondary" onClick={() => { setReplyingTo(message); setEditingId(null); }}>Reply</button>
                           {!message.voice_path && !message.attachment_path && (
                             <button type="button" className="button secondary" onClick={() => { setForwardingMessage(message); setForwardTargetId(""); }}>Forward</button>
