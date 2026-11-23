@@ -22,7 +22,11 @@ export default async function HomePage() {
           <div className="muted">A product of Cizzy Technologies</div>
         </div>
         {email ? (
-          <form action={signOut}><button className="button secondary" type="submit">Sign out</button></form>
+          <nav style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <Link className="button secondary" href="/profile">Profile</Link>
+            <Link className="button" href="/contacts">Contacts</Link>
+            <form action={signOut}><button className="button secondary" type="submit">Sign out</button></form>
+          </nav>
         ) : (
           <Link className="button" href="/login">Sign in / Create account</Link>
         )}
