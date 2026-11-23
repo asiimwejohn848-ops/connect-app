@@ -9,7 +9,7 @@ type ContactRequest = {
   recipient_id: string;
   status: "accepted";
 };
-type Profile = { id: string; username: string | null; display_name: string | null };
+type Profile = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null };
 type Message = {
   id: string;
   sender_id: string;
@@ -92,7 +92,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
     }
     const { data: people, error: peopleError } = await supabase
       .from("profiles")
-      .select("id, username, display_name")
+      .select("id, username, display_name, avatar_url")
       .in("id", ids);
     if (peopleError) {
       setProblem(true);
@@ -551,7 +551,10 @@ export default function MessagesClient({ userId }: { userId: string }) {
         {selected ? (
           <>
             <div style={{ borderBottom: "1px solid var(--line)", paddingBottom: 12 }}>
-              <h2 style={{ margin: 0 }}>{displayName(selected)}</h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {selected.avatar_url ? <img src={selected.avatar_url} alt="" style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "cover" }} /> : <span aria-hidden="true" style={{ width: 42, height: 42, borderRadius: "50%", display: "grid", placeItems: "center", background: "#30243f", color: "#d8c0f5", fontWeight: 800 }}>{displayName(selected)[0]?.toUpperCase()}</span>}
+                <h2 style={{ margin: 0 }}>{displayName(selected)}</h2>
+              </div>
               {selected.username && <span className="muted">@{selected.username}</span>}
               {contactTyping && <div className="muted" role="status" style={{ fontSize: ".8rem", marginTop: 4 }}>Typing…</div>}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
