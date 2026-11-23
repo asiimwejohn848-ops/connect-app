@@ -17,6 +17,7 @@ type Message = {
   body: string;
   created_at: string;
   read_at: string | null;
+  edited_at: string | null;
 };
 
 export default function MessagesClient({ userId }: { userId: string }) {
@@ -25,6 +26,8 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [selected, setSelected] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
@@ -65,7 +68,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const loadMessages = useCallback(async (person: Profile) => {
     const { data, error } = await supabase
       .from("messages")
-      .select("id, sender_id, recipient_id, body, created_at, read_at")
+      .select("id, sender_id, recipient_id, body, created_at, read_at, edited_at")
       .or(`and(sender_id.eq.${userId},recipient_id.eq.${person.id}),and(sender_id.eq.${person.id},recipient_id.eq.${userId})`)
       .order("created_at", { ascending: true });
     if (error) {
@@ -116,6 +119,41 @@ export default function MessagesClient({ userId }: { userId: string }) {
     await loadMessages(selected);
   }
 
+  async function saveEdit(message: Message) {
+    const body = editDraft.trim();
+    if (!body) {
+      setNotice("A message cannot be empty.");
+      setProblem(true);
+      return;
+    }
+    const { error } = await supabase.from("messages")
+      .update({ body })
+      .eq("id", message.id);
+    if (error) {
+      setProblem(true);
+      setNotice(error.message);
+      return;
+    }
+    setEditingId(null);
+    setEditDraft("");
+    setNotice("Message updated.");
+    setProblem(false);
+    if (selected) await loadMessages(selected);
+  }
+
+  async function deleteMessage(message: Message) {
+    if (!window.confirm("Delete this message? This cannot be undone.")) return;
+    const { error } = await supabase.from("messages").delete().eq("id", message.id);
+    if (error) {
+      setProblem(true);
+      setNotice(error.message);
+      return;
+    }
+    setMessages((current) => current.filter((item) => item.id !== message.id));
+    setNotice("Message deleted.");
+    setProblem(false);
+  }
+
   function displayName(person: Profile) {
     return person.display_name || (person.username ? `@${person.username}` : "CONNECT member");
   }
@@ -146,13 +184,34 @@ export default function MessagesClient({ userId }: { userId: string }) {
             <div aria-live="polite" style={{ flex: 1, display: "grid", alignContent: "start", gap: 10, padding: "16px 0", maxHeight: 420, overflowY: "auto" }}>
               {messages.length === 0 ? <p className="muted">No messages yet. Start the conversation.</p> : messages.map((message) => {
                 const mine = message.sender_id === userId;
+                const canEdit = mine && !message.read_at;
                 return (
-                  <div key={message.id} style={{ justifySelf: mine ? "end" : "start", maxWidth: "85%", background: mine ? "#382451" : "#211b2b", border: "1px solid var(--line)", borderRadius: 14, padding: "10px 13px" }}>
-                    <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message.body}</div>
-                    <div className="muted" style={{ fontSize: ".72rem", marginTop: 6 }}>
-                      {new Date(message.created_at).toLocaleString()}
-                      {mine && message.read_at ? " · Read" : ""}
-                    </div>
+                  <div key={message.id} style={{ justifySelf: mine ? "end" : "start", maxWidth: "85%", minWidth: 120, background: mine ? "#382451" : "#211b2b", border: "1px solid var(--line)", borderRadius: 14, padding: "10px 13px" }}>
+                    {editingId === message.id ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <textarea value={editDraft} onChange={(event) => setEditDraft(event.target.value)} maxLength={5000} rows={3}
+                          aria-label="Edit message" style={{ width: "100%", boxSizing: "border-box", padding: 8, borderRadius: 8, background: "#0f0c16", color: "white", border: "1px solid var(--line)" }} />
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button type="button" className="button" onClick={() => void saveEdit(message)}>Save</button>
+                          <button type="button" className="button secondary" onClick={() => { setEditingId(null); setEditDraft(""); }}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message.body}</div>
+                        <div className="muted" style={{ fontSize: ".72rem", marginTop: 6 }}>
+                          {new Date(message.created_at).toLocaleString()}
+                          {message.edited_at ? " · Edited" : ""}
+                          {mine && message.read_at ? " · Read" : ""}
+                        </div>
+                        {mine && (
+                          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                            {canEdit && <button type="button" className="button secondary" onClick={() => { setEditingId(message.id); setEditDraft(message.body); }}>Edit</button>}
+                            <button type="button" className="button secondary" onClick={() => void deleteMessage(message)}>Delete</button>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 );
               })}
