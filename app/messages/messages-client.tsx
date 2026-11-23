@@ -62,6 +62,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [problem, setProblem] = useState(false);
+  const [desktopNotifications, setDesktopNotifications] = useState(false);
 
   const loadContacts = useCallback(async () => {
     setLoading(true);
@@ -179,6 +180,59 @@ export default function MessagesClient({ userId }: { userId: string }) {
       }
     }
   }, [loadUnreadCounts, supabase, userId]);
+
+
+  useEffect(() => {
+    setDesktopNotifications(window.localStorage.getItem("connect-desktop-notifications") === "enabled");
+  }, []);
+
+  useEffect(() => {
+    if (!desktopNotifications || typeof window === "undefined" || !("Notification" in window) || Notification.permission !== "granted") return;
+    const channel = supabase
+      .channel(`connect-desktop-notifications-${userId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `recipient_id=eq.${userId}` }, (payload) => {
+        const incoming = payload.new as { sender_id?: string; body?: string; id?: string };
+        if (!incoming.sender_id || incoming.sender_id === selected?.id) return;
+        const sender = contacts.find((person) => person.id === incoming.sender_id);
+        const notification = new Notification(sender ? displayName(sender) : "New CONNECT message", {
+          body: (incoming.body || "You received a new message.").slice(0, 140),
+          tag: incoming.id || "connect-new-message",
+          icon: "/favicon.ico",
+        });
+        notification.onclick = () => {
+          window.focus();
+          if (sender) setSelected(sender);
+          notification.close();
+        };
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [contacts, desktopNotifications, selected?.id, supabase, userId]);
+
+  async function toggleDesktopNotifications() {
+    if (desktopNotifications) {
+      window.localStorage.setItem("connect-desktop-notifications", "disabled");
+      setDesktopNotifications(false);
+      setNotice("Desktop notifications disabled.");
+      setProblem(false);
+      return;
+    }
+    if (!("Notification" in window)) {
+      setNotice("This browser does not support desktop notifications.");
+      setProblem(true);
+      return;
+    }
+    const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+    if (permission !== "granted") {
+      setNotice("Notifications were not enabled. Check your browser's site permissions.");
+      setProblem(true);
+      return;
+    }
+    window.localStorage.setItem("connect-desktop-notifications", "enabled");
+    setDesktopNotifications(true);
+    setNotice("Desktop notifications enabled.");
+    setProblem(false);
+  }
 
   useEffect(() => { void loadContacts(); }, [loadContacts]);
   useEffect(() => () => {
@@ -595,6 +649,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
               {contactTyping && <div className="muted" role="status" style={{ fontSize: ".8rem", marginTop: 4 }}>Typing…</div>}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                 <button className="button secondary" type="button" onClick={() => void loadMessages(selected)}>Refresh conversation</button>
+                <button className="button secondary" type="button" onClick={() => void toggleDesktopNotifications()}>{desktopNotifications ? "Notifications on" : "Enable notifications"}</button>
                 <button className="button secondary" type="button" aria-pressed={showPinnedOnly} onClick={() => setShowPinnedOnly((value) => !value)}>{showPinnedOnly ? "Show all messages" : `Pinned (${pinnedMessageIds.length})`}</button>
                 <input value={messageSearch} onChange={(event) => setMessageSearch(event.target.value)}
                   placeholder="Search messages in this chat…" aria-label="Search messages in this conversation"
