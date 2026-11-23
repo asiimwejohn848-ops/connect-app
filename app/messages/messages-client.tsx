@@ -40,6 +40,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
+  const [showPinnedOnly, setShowPinnedOnly] = useState(false);
   const [contactTyping, setContactTyping] = useState(false);
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -555,6 +556,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
               {contactTyping && <div className="muted" role="status" style={{ fontSize: ".8rem", marginTop: 4 }}>Typing…</div>}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                 <button className="button secondary" type="button" onClick={() => void loadMessages(selected)}>Refresh conversation</button>
+                <button className="button secondary" type="button" aria-pressed={showPinnedOnly} onClick={() => setShowPinnedOnly((value) => !value)}>{showPinnedOnly ? "Show all messages" : `Pinned (${pinnedMessageIds.length})`}</button>
                 <input value={messageSearch} onChange={(event) => setMessageSearch(event.target.value)}
                   placeholder="Search messages in this chat…" aria-label="Search messages in this conversation"
                   style={{ flex: 1, minWidth: 160, padding: 9, borderRadius: 9, border: "1px solid var(--line)", background: "#0f0c16", color: "white" }} />
@@ -585,9 +587,9 @@ export default function MessagesClient({ userId }: { userId: string }) {
               </div>
             )}
             <div aria-live="polite" style={{ flex: 1, display: "grid", alignContent: "start", gap: 10, padding: "16px 0", maxHeight: 420, overflowY: "auto" }}>
-              {messages.filter((message) => message.body.toLowerCase().includes(messageSearch.trim().toLowerCase())).length === 0 ? (
-                <p className="muted">{messageSearch.trim() ? "No messages match that search." : "No messages yet. Start the conversation."}</p>
-              ) : messages.filter((message) => message.body.toLowerCase().includes(messageSearch.trim().toLowerCase())).map((message) => {
+              {messages.filter((message) => message.body.toLowerCase().includes(messageSearch.trim().toLowerCase()) && (!showPinnedOnly || pinnedMessageIds.includes(message.id))).length === 0 ? (
+                <p className="muted">{showPinnedOnly ? "No pinned messages in this conversation yet." : messageSearch.trim() ? "No messages match that search." : "No messages yet. Start the conversation."}</p>
+              ) : messages.filter((message) => message.body.toLowerCase().includes(messageSearch.trim().toLowerCase()) && (!showPinnedOnly || pinnedMessageIds.includes(message.id))).map((message) => {
                 const mine = message.sender_id === userId;
                 const canEdit = mine && !message.read_at;
                 const repliedMessage = message.reply_to_id ? messages.find((item) => item.id === message.reply_to_id) : null;
