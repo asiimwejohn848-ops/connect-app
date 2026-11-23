@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 
 type Profile = {
@@ -29,7 +29,7 @@ export default function ContactsClient({ userId }: { userId: string }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState(false);
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const loadRequests = useCallback(async () => {
     const { data, error: requestError } = await supabase
@@ -162,6 +162,7 @@ export default function ContactsClient({ userId }: { userId: string }) {
     <div style={{ display: "grid", gap: 20, marginTop: 24 }}>
       <section className="panel">
         <h2 style={{ marginTop: 0 }}>Find people</h2>
+        <p className="muted">Search for members by their display name or username. Only registered CONNECT members can appear here.</p>
         <form onSubmit={searchPeople} style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <input
             aria-label="Search by name or username"
