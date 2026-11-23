@@ -38,6 +38,8 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [messageSearch, setMessageSearch] = useState("");
   const [selected, setSelected] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [conversationPreviews, setConversationPreviews] = useState<Record<string, ConversationPreview>>({});
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
@@ -150,13 +152,16 @@ export default function MessagesClient({ userId }: { userId: string }) {
       .from("messages")
       .select("id, sender_id, recipient_id, body, created_at, read_at, delivered_at, edited_at, reply_to_id, voice_path, attachment_path, attachment_name, attachment_mime, attachment_size, forwarded_from_sender_id, forwarded_from_name")
       .or(`and(sender_id.eq.${userId},recipient_id.eq.${person.id}),and(sender_id.eq.${person.id},recipient_id.eq.${userId})`)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false })
+      .limit(50);
     if (error) {
       setProblem(true);
       setNotice(error.message);
       return;
     }
-    const rows = (data ?? []) as Message[];
+    const newestFirst = (data ?? []) as Message[];
+    setHasOlderMessages(newestFirst.length === 50);
+    const rows = newestFirst.reverse();
     setMessages(rows);
     if (rows.length) {
       const { data: pins } = await supabase.from("message_pins").select("message_id").eq("user_id", userId).in("message_id", rows.map((message) => message.id));
@@ -197,6 +202,57 @@ export default function MessagesClient({ userId }: { userId: string }) {
     }
   }, [loadUnreadCounts, supabase, userId]);
 
+
+  async function loadOlderMessages() {
+    if (!selected || !messages.length || loadingOlderMessages || !hasOlderMessages) return;
+    setLoadingOlderMessages(true);
+    const oldest = messages[0];
+    const { data, error } = await supabase.from("messages")
+      .select("id, sender_id, recipient_id, body, created_at, read_at, delivered_at, edited_at, reply_to_id, voice_path, attachment_path, attachment_name, attachment_mime, attachment_size, forwarded_from_sender_id, forwarded_from_name")
+      .or(`and(sender_id.eq.${userId},recipient_id.eq.${selected.id}),and(sender_id.eq.${selected.id},recipient_id.eq.${userId})`)
+      .lt("created_at", oldest.created_at)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (error) {
+      setProblem(true);
+      setNotice(error.message);
+      setLoadingOlderMessages(false);
+      return;
+    }
+    const older = ((data ?? []) as Message[]).reverse();
+    setHasOlderMessages(older.length === 50);
+    if (older.length) {
+      setMessages((current) => [...older, ...current]);
+      const ids = older.map((message) => message.id);
+      const [{ data: pins }, { data: reactionRows }] = await Promise.all([
+        supabase.from("message_pins").select("message_id").eq("user_id", userId).in("message_id", ids),
+        supabase.from("message_reactions").select("id, message_id, user_id, emoji").in("message_id", ids),
+      ]);
+      setPinnedMessageIds((current) => [...new Set([...current, ...(pins ?? []).map((pin: { message_id: string }) => pin.message_id)])]);
+      setReactions((current) => [...current, ...((reactionRows ?? []) as MessageReaction[])]);
+      const voicePaths = older.filter((message) => message.voice_path).map((message) => message.voice_path as string);
+      const attachmentPaths = older.filter((message) => message.attachment_path).map((message) => message.attachment_path as string);
+      const [voiceEntries, attachmentEntries] = await Promise.all([
+        Promise.all(voicePaths.map(async (path) => {
+          const { data: signed } = await supabase.storage.from("connect-voice-messages").createSignedUrl(path, 3600);
+          return signed?.signedUrl ? [path, signed.signedUrl] as const : null;
+        })),
+        Promise.all(attachmentPaths.map(async (path) => {
+          const { data: signed } = await supabase.storage.from("connect-message-attachments").createSignedUrl(path, 3600);
+          return signed?.signedUrl ? [path, signed.signedUrl] as const : null;
+        })),
+      ]);
+      setVoiceUrls((current) => ({ ...current, ...Object.fromEntries(voiceEntries.filter((entry): entry is readonly [string, string] => Boolean(entry))) }));
+      setAttachmentUrls((current) => ({ ...current, ...Object.fromEntries(attachmentEntries.filter((entry): entry is readonly [string, string] => Boolean(entry))) }));
+      const unreadIds = older.filter((message) => message.recipient_id === userId && !message.read_at).map((message) => message.id);
+      if (unreadIds.length) {
+        const readAt = new Date().toISOString();
+        const { error: readError } = await supabase.from("messages").update({ delivered_at: readAt, read_at: readAt }).in("id", unreadIds);
+        if (!readError) setMessages((current) => current.map((message) => unreadIds.includes(message.id) ? { ...message, read_at: readAt, delivered_at: message.delivered_at || readAt } : message));
+      }
+    }
+    setLoadingOlderMessages(false);
+  }
 
   useEffect(() => {
     setDesktopNotifications(window.localStorage.getItem("connect-desktop-notifications") === "enabled");
@@ -708,6 +764,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
               </div>
             )}
             <div aria-live="polite" style={{ flex: 1, display: "grid", alignContent: "start", gap: 10, padding: "16px 0", maxHeight: 420, overflowY: "auto" }}>
+              {hasOlderMessages && <div style={{ textAlign: "center" }}><button type="button" className="button secondary" onClick={() => void loadOlderMessages()} disabled={loadingOlderMessages}>{loadingOlderMessages ? "Loading older messages…" : "Load older messages"}</button></div>}
               {messages.filter((message) => message.body.toLowerCase().includes(messageSearch.trim().toLowerCase()) && (!showPinnedOnly || pinnedMessageIds.includes(message.id))).length === 0 ? (
                 <p className="muted">{showPinnedOnly ? "No pinned messages in this conversation yet." : messageSearch.trim() ? "No messages match that search." : "No messages yet. Start the conversation."}</p>
               ) : messages.filter((message) => message.body.toLowerCase().includes(messageSearch.trim().toLowerCase()) && (!showPinnedOnly || pinnedMessageIds.includes(message.id))).map((message) => {
