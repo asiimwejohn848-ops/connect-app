@@ -18,6 +18,7 @@ export default function GroupsClient({ userId }: { userId: string }) {
   const [names, setNames] = useState<Record<string, string>>({});
   const [avatars, setAvatars] = useState<Record<string, string>>({});
   const [groupName, setGroupName] = useState("");
+  const [renameName, setRenameName] = useState("");
   const [chosen, setChosen] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -81,6 +82,7 @@ export default function GroupsClient({ userId }: { userId: string }) {
 
   useEffect(() => {
     if (!selected) { setMessages([]); setMembers([]); return; }
+    setRenameName(selected.name);
     void loadSelected(selected);
     const channel = supabase.channel("connect-group-" + selected.id)
       .on("postgres_changes", { event: "*", schema: "public", table: "group_messages", filter: "group_id=eq." + selected.id },
@@ -115,6 +117,33 @@ export default function GroupsClient({ userId }: { userId: string }) {
     }
     setGroupName(""); setChosen([]);
     await loadGroups(); setSelected(group as Group); setNotice("Group created and members added.");
+  }
+
+  async function renameGroup(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected || !renameName.trim()) return;
+    setBusy(true); setProblem(false); setNotice("");
+    const { error } = await supabase.rpc("rename_group", {
+      p_group_id: selected.id, p_name: renameName.trim(),
+    });
+    setBusy(false);
+    if (error) { setProblem(true); setNotice(error.message); return; }
+    const updated = { ...selected, name: renameName.trim() };
+    setSelected(updated);
+    setGroups((current) => current.map((group) => group.id === updated.id ? updated : group));
+    setNotice("Group name updated.");
+  }
+
+  async function removeGroupMember(memberId: string) {
+    if (!selected || !window.confirm("Remove this member from the group?")) return;
+    setBusy(true); setProblem(false); setNotice("");
+    const { error } = await supabase.rpc("remove_group_member", {
+      p_group_id: selected.id, p_member_id: memberId,
+    });
+    setBusy(false);
+    if (error) { setProblem(true); setNotice(error.message); return; }
+    setNotice("Member removed.");
+    await loadSelected(selected);
   }
 
   async function sendGroupMessage(event: React.FormEvent<HTMLFormElement>) {
@@ -175,7 +204,12 @@ export default function GroupsClient({ userId }: { userId: string }) {
           {selected ? <>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", borderBottom: "1px solid var(--line)", paddingBottom: 10 }}>
               <div><strong>{selected.name}</strong><div className="muted" style={{ fontSize: ".8rem" }}>{members.length} members · {isAdmin ? "Admin" : "Member"}</div>
-                <div className="muted" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: ".78rem", marginTop: 6 }}>{members.map((m) => <span key={m.user_id} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 24, height: 24, borderRadius: "50%", overflow: "hidden", display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#382451", flexShrink: 0 }}>{avatars[m.user_id] ? <img src={avatars[m.user_id]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (names[m.user_id] || "C").slice(0, 1).toUpperCase()}</span>{names[m.user_id] || "CONNECT member"}</span>)}</div>
+                {isAdmin && <form onSubmit={renameGroup} style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  <input value={renameName} onChange={(event) => setRenameName(event.target.value)} maxLength={80} aria-label="Rename group"
+                    style={{ minWidth: 0, width: 180, padding: 7, borderRadius: 8, border: "1px solid var(--line)", background: "#0f0c16", color: "white" }} />
+                  <button className="button secondary" type="submit" disabled={busy || renameName.trim().length < 2}>Rename</button>
+                </form>}
+                <div className="muted" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: ".78rem", marginTop: 6 }}>{members.map((m) => <span key={m.user_id} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 24, height: 24, borderRadius: "50%", overflow: "hidden", display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#382451", flexShrink: 0 }}>{avatars[m.user_id] ? <img src={avatars[m.user_id]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (names[m.user_id] || "C").slice(0, 1).toUpperCase()}</span>{names[m.user_id] || "CONNECT member"}{isAdmin && m.role === "member" && <button type="button" className="button secondary" onClick={() => void removeGroupMember(m.user_id)} disabled={busy} aria-label={"Remove " + (names[m.user_id] || "member")} style={{ padding: "2px 6px", fontSize: ".68rem" }}>Remove</button>}</span>)}</div>
               </div>
               <button className="button secondary" type="button" onClick={() => void leaveGroup()} disabled={busy}>Leave group</button>
             </div>
