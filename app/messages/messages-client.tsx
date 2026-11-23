@@ -36,6 +36,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [messageSearch, setMessageSearch] = useState("");
   const [selected, setSelected] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -95,6 +96,30 @@ export default function MessagesClient({ userId }: { userId: string }) {
     setLoading(false);
   }, [supabase, userId]);
 
+  const loadUnreadCounts = useCallback(async () => {
+    const { data, error } = await supabase.from("messages")
+      .select("sender_id")
+      .eq("recipient_id", userId)
+      .is("read_at", null);
+    if (error) return;
+    const counts: Record<string, number> = {};
+    (data ?? []).forEach((row: { sender_id: string }) => {
+      counts[row.sender_id] = (counts[row.sender_id] ?? 0) + 1;
+    });
+    setUnreadCounts(counts);
+  }, [supabase, userId]);
+
+  useEffect(() => {
+    void loadUnreadCounts();
+    const channel = supabase
+      .channel(`connect-unread-${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => {
+        void loadUnreadCounts();
+      })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [loadUnreadCounts, supabase, userId]);
+
   const loadMessages = useCallback(async (person: Profile) => {
     const { data, error } = await supabase
       .from("messages")
@@ -135,7 +160,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
         setMessages((current) => current.map((m) => unreadIds.includes(m.id) ? { ...m, read_at: readAt } : m));
       }
     }
-  }, [supabase, userId]);
+  }, [loadUnreadCounts, supabase, userId]);
 
   useEffect(() => { void loadContacts(); }, [loadContacts]);
   useEffect(() => () => {
@@ -408,7 +433,10 @@ export default function MessagesClient({ userId }: { userId: string }) {
           <button key={person.id} type="button" onClick={() => { setSelected(person); setNotice(""); setProblem(false); }}
             className={selected?.id === person.id ? "button" : "button secondary"}
             style={{ display: "block", width: "100%", textAlign: "left", marginTop: 8 }}>
-            {displayName(person)}
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span>{displayName(person)}</span>
+              {Boolean(unreadCounts[person.id]) && <span aria-label={`${unreadCounts[person.id]} unread messages`} style={{ minWidth: 20, height: 20, padding: "0 6px", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 999, background: "#9b72d4", color: "#fff", fontSize: ".72rem", fontWeight: 800 }}>{unreadCounts[person.id]}</span>}
+            </span>
           </button>
         ))}
       </aside>
