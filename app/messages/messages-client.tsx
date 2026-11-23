@@ -54,6 +54,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [voiceUrls, setVoiceUrls] = useState<Record<string, string>>({});
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -524,6 +525,41 @@ export default function MessagesClient({ userId }: { userId: string }) {
     return person.display_name || (person.username ? `@${person.username}` : "CONNECT member");
   }
 
+  function applyFormatting(prefix: string, suffix = prefix) {
+    const field = composerRef.current;
+    if (!field) return;
+    const start = field.selectionStart;
+    const end = field.selectionEnd;
+    const selectedText = draft.slice(start, end);
+    const replacement = selectedText ? prefix + selectedText + suffix : prefix + suffix;
+    const next = draft.slice(0, start) + replacement + draft.slice(end);
+    setDraft(next);
+    requestAnimationFrame(() => {
+      field.focus();
+      const cursorStart = start + prefix.length;
+      const cursorEnd = selectedText ? cursorStart + selectedText.length : cursorStart;
+      field.setSelectionRange(cursorStart, cursorEnd);
+    });
+  }
+
+  function renderFormattedBody(body: string) {
+    const lines = body.split("\\n");
+    return lines.map((line, lineIndex) => {
+      const bullet = /^\\s*[-•]\\s+/.test(line);
+      const content = bullet ? line.replace(/^\\s*[-•]\\s+/, "") : line;
+      const tokens = content.split(/(\\*\\*.*?\\*\\*|__.*?__|~~.*?~~|\\*[^*]+\\*|_[^_]+_)/g);
+      const rendered = tokens.map((token, index) => {
+        if (token.startsWith("**") && token.endsWith("**")) return <strong key={index}>{token.slice(2, -2)}</strong>;
+        if (token.startsWith("__") && token.endsWith("__")) return <u key={index}>{token.slice(2, -2)}</u>;
+        if (token.startsWith("~~") && token.endsWith("~~")) return <s key={index}>{token.slice(2, -2)}</s>;
+        if (token.startsWith("*") && token.endsWith("*")) return <em key={index}>{token.slice(1, -1)}</em>;
+        if (token.startsWith("_") && token.endsWith("_")) return <em key={index}>{token.slice(1, -1)}</em>;
+        return <span key={index}>{token}</span>;
+      });
+      return <div key={lineIndex} style={bullet ? { paddingLeft: 14, position: "relative" } : undefined}>{bullet ? <span aria-hidden="true" style={{ position: "absolute", left: 0 }}>•</span> : null}{rendered}</div>;
+    });
+  }
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(190px, 0.75fr) minmax(0, 1.6fr)", gap: 16, marginTop: 24 }}>
       <aside className="panel">
@@ -633,7 +669,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
                       </div>
                     ) : (
                       <>
-                        <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message.body}</div>
+                        <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{renderFormattedBody(message.body)}</div>
                         <div className="muted" style={{ fontSize: ".72rem", marginTop: 6 }}>
                           {new Date(message.created_at).toLocaleString()}
                           {message.edited_at ? " · Edited" : ""}
@@ -682,17 +718,21 @@ export default function MessagesClient({ userId }: { userId: string }) {
                 style={{ display: "none" }}
                 aria-label="Choose an image or document"
               />
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input value={draft} onChange={(event) => handleDraftChange(event.target.value)} maxLength={5000}
-                placeholder="Write a message…" aria-label="Write a message"
-                style={{ flex: 1, minWidth: 0, padding: 12, borderRadius: 10, border: "1px solid var(--line)", background: "#0f0c16", color: "white" }} />
-              <button className="button" type="submit" disabled={sending || !draft.trim()}>{sending ? "Sending…" : "Send"}</button>
-              <button className="button secondary" type="button" onClick={() => fileInputRef.current?.click()} disabled={sending}>
-                Attach file
-              </button>
-              <button className="button secondary" type="button" onClick={() => void recordVoiceMessage()} disabled={sending}>
-                {recording ? "Stop recording" : "Record voice"}
-              </button>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }} aria-label="Message formatting">
+                <button type="button" className="button secondary" title="Bold" aria-label="Bold" onClick={() => applyFormatting("**")} disabled={sending}><strong>B</strong></button>
+                <button type="button" className="button secondary" title="Italic" aria-label="Italic" onClick={() => applyFormatting("*")} disabled={sending}><em>I</em></button>
+                <button type="button" className="button secondary" title="Underline" aria-label="Underline" onClick={() => applyFormatting("__")} disabled={sending}><u>U</u></button>
+                <button type="button" className="button secondary" title="Bullet list" aria-label="Bullet list" onClick={() => applyFormatting("- ", "")} disabled={sending}>• List</button>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
+                <textarea ref={composerRef} value={draft} onChange={(event) => handleDraftChange(event.target.value)} maxLength={5000}
+                  rows={2} placeholder="Write a message…" aria-label="Write a message"
+                  style={{ flex: 1, minWidth: 0, resize: "vertical", padding: 12, borderRadius: 10, border: "1px solid var(--line)", background: "#0f0c16", color: "white", font: "inherit" }} />
+                <button className="button" type="submit" disabled={sending || !draft.trim()}>{sending ? "Sending…" : "Send"}</button>
+                <button className="button secondary" type="button" onClick={() => fileInputRef.current?.click()} disabled={sending}>Attach file</button>
+                <button className="button secondary" type="button" onClick={() => void recordVoiceMessage()} disabled={sending}>
+                  {recording ? "Stop recording" : "Record voice"}
+                </button>
               </div>
             </form>
           </>
