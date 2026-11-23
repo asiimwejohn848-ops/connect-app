@@ -14,10 +14,10 @@ export default async function ProfilePage() {
     .eq("id", user.id)
     .single();
 
-  if (error) {
+  if (error || !profile) {
     return (
       <main className="shell">
-        <p className="notice">We couldn't load your profile. Please refresh the page. If this continues, share this message: {error.message}</p>
+        <p className="notice">We couldn't load your profile. Please refresh the page. If this continues, share this message: {error?.message ?? "Profile record not found."}</p>
       </main>
     );
   }
