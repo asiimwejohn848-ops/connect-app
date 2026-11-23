@@ -37,6 +37,9 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [selected, setSelected] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [contactTyping, setContactTyping] = useState(false);
+  const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -173,6 +176,47 @@ export default function MessagesClient({ userId }: { userId: string }) {
   }, [selected, loadMessages]);
 
   // Keep the open conversation synchronized when either participant changes a message.
+  useEffect(() => {
+    if (!selected) {
+      setContactTyping(false);
+      return;
+    }
+    const channel = supabase
+      .channel(`connect-typing-${[userId, selected.id].sort().join("-")}`)
+      .on("broadcast", { event: "typing" }, ({ payload }) => {
+        if (payload?.userId === selected.id) {
+          setContactTyping(Boolean(payload.isTyping));
+        }
+      })
+      .subscribe();
+    typingChannelRef.current = channel;
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingChannelRef.current = null;
+      setContactTyping(false);
+      void supabase.removeChannel(channel);
+    };
+  }, [selected, supabase, userId]);
+
+  async function broadcastTyping(isTyping: boolean) {
+    if (!selected || !typingChannelRef.current) return;
+    await typingChannelRef.current.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { userId, isTyping },
+    });
+  }
+
+  function handleDraftChange(value: string) {
+    setDraft(value);
+    if (!selected) return;
+    void broadcastTyping(Boolean(value.trim()));
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    if (value.trim()) {
+      typingTimeoutRef.current = setTimeout(() => void broadcastTyping(false), 1600);
+    }
+  }
+
   useEffect(() => {
     if (!selected) return;
     const channel = supabase
@@ -447,6 +491,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
             <div style={{ borderBottom: "1px solid var(--line)", paddingBottom: 12 }}>
               <h2 style={{ margin: 0 }}>{displayName(selected)}</h2>
               {selected.username && <span className="muted">@{selected.username}</span>}
+              {contactTyping && <div className="muted" role="status" style={{ fontSize: ".8rem", marginTop: 4 }}>Typing…</div>}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
                 <button className="button secondary" type="button" onClick={() => void loadMessages(selected)}>Refresh conversation</button>
                 <input value={messageSearch} onChange={(event) => setMessageSearch(event.target.value)}
@@ -558,7 +603,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
                 aria-label="Choose an image or document"
               />
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <input value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={5000}
+              <input value={draft} onChange={(event) => handleDraftChange(event.target.value)} maxLength={5000}
                 placeholder="Write a message…" aria-label="Write a message"
                 style={{ flex: 1, minWidth: 0, padding: 12, borderRadius: 10, border: "1px solid var(--line)", background: "#0f0c16", color: "white" }} />
               <button className="button" type="submit" disabled={sending || !draft.trim()}>{sending ? "Sending…" : "Send"}</button>
