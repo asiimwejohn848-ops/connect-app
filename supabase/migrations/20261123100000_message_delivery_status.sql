@@ -22,7 +22,6 @@ begin
     or new.recipient_id is distinct from old.recipient_id
     or new.body is distinct from old.body
     or new.created_at is distinct from old.created_at
-    or new.edited_at is distinct from old.edited_at
     or new.reply_to_id is distinct from old.reply_to_id
     or new.voice_path is distinct from old.voice_path
     or new.attachment_path is distinct from old.attachment_path
