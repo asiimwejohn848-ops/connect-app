@@ -29,6 +29,7 @@ type Message = {
   forwarded_from_name: string | null;
 };
 type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
+type ConversationPreview = { body: string; created_at: string; sender_id: string; voice_path: string | null; attachment_path: string | null };
 
 export default function MessagesClient({ userId }: { userId: string }) {
   const supabase = useMemo(() => createClient(), []);
@@ -38,6 +39,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [selected, setSelected] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [conversationPreviews, setConversationPreviews] = useState<Record<string, ConversationPreview>>({});
   const [reactions, setReactions] = useState<MessageReaction[]>([]);
   const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
   const [showPinnedOnly, setShowPinnedOnly] = useState(false);
@@ -86,6 +88,20 @@ export default function MessagesClient({ userId }: { userId: string }) {
       setProblem(true);
       setNotice(deliveryError.message);
     }
+    const { data: recentMessages } = await supabase.from("messages")
+      .select("sender_id, recipient_id, body, created_at, voice_path, attachment_path")
+      .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    const previews: Record<string, ConversationPreview> = {};
+    (recentMessages ?? []).forEach((message: ConversationPreview & { recipient_id: string }) => {
+      const otherId = message.sender_id === userId ? message.recipient_id : message.sender_id;
+      if (!previews[otherId]) previews[otherId] = {
+        body: message.body, created_at: message.created_at, sender_id: message.sender_id,
+        voice_path: message.voice_path, attachment_path: message.attachment_path,
+      };
+    });
+    setConversationPreviews(previews);
     const ids = [...new Set((rows ?? []).map((row: ContactRequest) => row.sender_id === userId ? row.recipient_id : row.sender_id))];
     if (!ids.length) {
       setContacts([]);
@@ -625,13 +641,24 @@ export default function MessagesClient({ userId }: { userId: string }) {
           <p className="muted">You don't have accepted contacts yet. When someone accepts your contact request, they will appear here.</p>
         ) : contacts.filter((person) => displayName(person).toLowerCase().includes(contactSearch.trim().toLowerCase())).length === 0 ? (
           <p className="muted">No contacts match that search.</p>
-        ) : contacts.filter((person) => displayName(person).toLowerCase().includes(contactSearch.trim().toLowerCase())).map((person) => (
+        ) : [...contacts].filter((person) => displayName(person).toLowerCase().includes(contactSearch.trim().toLowerCase())).sort((a, b) =>
+          (conversationPreviews[b.id]?.created_at || "").localeCompare(conversationPreviews[a.id]?.created_at || "")
+        ).map((person) => (
           <button key={person.id} type="button" onClick={() => { setSelected(person); setNotice(""); setProblem(false); }}
             className={selected?.id === person.id ? "button" : "button secondary"}
             style={{ display: "block", width: "100%", textAlign: "left", marginTop: 8 }}>
             <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <span>{displayName(person)}</span>
-              {Boolean(unreadCounts[person.id]) && <span aria-label={`${unreadCounts[person.id]} unread messages`} style={{ minWidth: 20, height: 20, padding: "0 6px", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 999, background: "#9b72d4", color: "#fff", fontSize: ".72rem", fontWeight: 800 }}>{unreadCounts[person.id]}</span>}
+              <span style={{ minWidth: 0, display: "grid", gap: 3 }}>
+                <span>{displayName(person)}</span>
+                {conversationPreviews[person.id] && <span className="muted" style={{ fontSize: ".76rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>
+                  {conversationPreviews[person.id].sender_id === userId ? "You: " : ""}
+                  {conversationPreviews[person.id].voice_path ? "🎤 Voice message" : conversationPreviews[person.id].attachment_path ? "📎 Attachment" : conversationPreviews[person.id].body.slice(0, 52)}
+                </span>}
+              </span>
+              <span style={{ display: "grid", justifyItems: "end", gap: 4 }}>
+                {conversationPreviews[person.id] && <span className="muted" style={{ fontSize: ".68rem" }}>{new Date(conversationPreviews[person.id].created_at).toLocaleDateString()}</span>}
+                {Boolean(unreadCounts[person.id]) && <span aria-label={`${unreadCounts[person.id]} unread messages`} style={{ minWidth: 20, height: 20, padding: "0 6px", display: "inline-flex", alignItems: "center", justifyContent: "center", borderRadius: 999, background: "#9b72d4", color: "#fff", fontSize: ".72rem", fontWeight: 800 }}>{unreadCounts[person.id]}</span>}
+              </span>
             </span>
           </button>
         ))}
