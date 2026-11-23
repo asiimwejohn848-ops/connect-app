@@ -24,6 +24,8 @@ type Message = {
   attachment_name: string | null;
   attachment_mime: string | null;
   attachment_size: number | null;
+  forwarded_from_sender_id: string | null;
+  forwarded_from_name: string | null;
 };
 
 export default function MessagesClient({ userId }: { userId: string }) {
@@ -37,6 +39,8 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [forwardTargetId, setForwardTargetId] = useState("");
   const [recording, setRecording] = useState(false);
   const [voiceUrls, setVoiceUrls] = useState<Record<string, string>>({});
   const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>({});
@@ -84,7 +88,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const loadMessages = useCallback(async (person: Profile) => {
     const { data, error } = await supabase
       .from("messages")
-      .select("id, sender_id, recipient_id, body, created_at, read_at, edited_at, reply_to_id, voice_path, attachment_path, attachment_name, attachment_mime, attachment_size")
+      .select("id, sender_id, recipient_id, body, created_at, read_at, edited_at, reply_to_id, voice_path, attachment_path, attachment_name, attachment_mime, attachment_size, forwarded_from_sender_id, forwarded_from_name")
       .or(`and(sender_id.eq.${userId},recipient_id.eq.${person.id}),and(sender_id.eq.${person.id},recipient_id.eq.${userId})`)
       .order("created_at", { ascending: true });
     if (error) {
@@ -315,6 +319,26 @@ export default function MessagesClient({ userId }: { userId: string }) {
     await loadMessages(selected);
   }
 
+  async function forwardMessage() {
+    if (!forwardingMessage || !forwardTargetId) return;
+    setSending(true);
+    setProblem(false);
+    setNotice("Forwarding message…");
+    const { error } = await supabase.rpc("forward_private_message", {
+      p_message_id: forwardingMessage.id,
+      p_recipient_id: forwardTargetId,
+    });
+    setSending(false);
+    if (error) {
+      setProblem(true);
+      setNotice(error.message);
+      return;
+    }
+    setForwardingMessage(null);
+    setForwardTargetId("");
+    setNotice("Message forwarded.");
+  }
+
   async function saveEdit(message: Message) {
     const body = editDraft.trim();
     if (!body) {
@@ -395,6 +419,27 @@ export default function MessagesClient({ userId }: { userId: string }) {
                 {messages.filter((message) => message.body.toLowerCase().includes(messageSearch.trim().toLowerCase())).length} matching messages
               </p>}
             </div>
+            {forwardingMessage && (
+              <div role="dialog" aria-label="Forward message" aria-modal="true" style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 12, marginTop: 12, background: "#211b2b" }}>
+                <strong>Forward message</strong>
+                <p className="muted" style={{ margin: "6px 0 10px" }}>{forwardingMessage.body.slice(0, 180)}</p>
+                <label htmlFor="forward-target" className="muted">Choose an accepted contact</label>
+                <select id="forward-target" value={forwardTargetId} onChange={(event) => setForwardTargetId(event.target.value)}
+                  style={{ display: "block", width: "100%", marginTop: 6, padding: 10, borderRadius: 8, background: "#0f0c16", color: "white", border: "1px solid var(--line)" }}>
+                  <option value="">Select a contact…</option>
+                  {contacts.filter((person) => person.id !== selected.id).map((person) => (
+                    <option key={person.id} value={person.id}>{displayName(person)}</option>
+                  ))}
+                </select>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button type="button" className="button" onClick={() => void forwardMessage()} disabled={sending || !forwardTargetId}>
+                    {sending ? "Forwarding…" : "Forward"}
+                  </button>
+                  <button type="button" className="button secondary" onClick={() => { setForwardingMessage(null); setForwardTargetId(""); }}>Cancel</button>
+                </div>
+                {contacts.filter((person) => person.id !== selected.id).length === 0 && <p className="muted">You need another accepted contact to forward this message.</p>}
+              </div>
+            )}
             <div aria-live="polite" style={{ flex: 1, display: "grid", alignContent: "start", gap: 10, padding: "16px 0", maxHeight: 420, overflowY: "auto" }}>
               {messages.filter((message) => message.body.toLowerCase().includes(messageSearch.trim().toLowerCase())).length === 0 ? (
                 <p className="muted">{messageSearch.trim() ? "No messages match that search." : "No messages yet. Start the conversation."}</p>
@@ -445,13 +490,19 @@ export default function MessagesClient({ userId }: { userId: string }) {
                           {message.edited_at ? " · Edited" : ""}
                           {mine && message.read_at ? " · Read" : ""}
                         </div>
-                        {mine && (
-                          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                            <button type="button" className="button secondary" onClick={() => { setReplyingTo(message); setEditingId(null); }}>Reply</button>
-                            {canEdit && <button type="button" className="button secondary" onClick={() => { setEditingId(message.id); setEditDraft(message.body); }}>Edit</button>}
-                            <button type="button" className="button secondary" onClick={() => void deleteMessage(message)}>Delete</button>
+                        {message.forwarded_from_sender_id && (
+                          <div className="muted" style={{ fontSize: ".75rem", marginTop: 5, fontStyle: "italic" }}>
+                            Forwarded · Originally sent by {message.forwarded_from_name || "a CONNECT member"}
                           </div>
                         )}
+                        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                          <button type="button" className="button secondary" onClick={() => { setReplyingTo(message); setEditingId(null); }}>Reply</button>
+                          {!message.voice_path && !message.attachment_path && (
+                            <button type="button" className="button secondary" onClick={() => { setForwardingMessage(message); setForwardTargetId(""); }}>Forward</button>
+                          )}
+                          {mine && canEdit && <button type="button" className="button secondary" onClick={() => { setEditingId(message.id); setEditDraft(message.body); }}>Edit</button>}
+                          {mine && <button type="button" className="button secondary" onClick={() => void deleteMessage(message)}>Delete</button>}
+                        </div>
                       </>
                     )}
                   </div>
