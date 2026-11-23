@@ -18,6 +18,7 @@ type Message = {
   created_at: string;
   read_at: string | null;
   edited_at: string | null;
+  reply_to_id: string | null;
 };
 
 export default function MessagesClient({ userId }: { userId: string }) {
@@ -28,6 +29,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
@@ -68,7 +70,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const loadMessages = useCallback(async (person: Profile) => {
     const { data, error } = await supabase
       .from("messages")
-      .select("id, sender_id, recipient_id, body, created_at, read_at, edited_at")
+      .select("id, sender_id, recipient_id, body, created_at, read_at, edited_at, reply_to_id")
       .or(`and(sender_id.eq.${userId},recipient_id.eq.${person.id}),and(sender_id.eq.${person.id},recipient_id.eq.${userId})`)
       .order("created_at", { ascending: true });
     if (error) {
@@ -108,6 +110,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
       sender_id: userId,
       recipient_id: selected.id,
       body,
+      reply_to_id: replyingTo?.id ?? null,
     });
     setSending(false);
     if (error) {
@@ -116,6 +119,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
       return;
     }
     setDraft("");
+    setReplyingTo(null);
     await loadMessages(selected);
   }
 
@@ -185,8 +189,11 @@ export default function MessagesClient({ userId }: { userId: string }) {
               {messages.length === 0 ? <p className="muted">No messages yet. Start the conversation.</p> : messages.map((message) => {
                 const mine = message.sender_id === userId;
                 const canEdit = mine && !message.read_at;
+                const repliedMessage = message.reply_to_id ? messages.find((item) => item.id === message.reply_to_id) : null;
                 return (
                   <div key={message.id} style={{ justifySelf: mine ? "end" : "start", maxWidth: "85%", minWidth: 120, background: mine ? "#382451" : "#211b2b", border: "1px solid var(--line)", borderRadius: 14, padding: "10px 13px" }}>
+                    {repliedMessage && <div style={{ borderLeft: "3px solid #b58ae8", paddingLeft: 8, marginBottom: 8, opacity: .85, fontSize: ".82rem" }}><strong>{repliedMessage.sender_id === userId ? "You" : displayName(selected)}</strong><div style={{ whiteSpace: "pre-wrap", overflow: "hidden", textOverflow: "ellipsis" }}>{repliedMessage.body}</div></div>}
+                    {message.reply_to_id && !repliedMessage && <div className="muted" style={{ fontSize: ".8rem", marginBottom: 6 }}>Reply to an unavailable message</div>}
                     {editingId === message.id ? (
                       <div style={{ display: "grid", gap: 8 }}>
                         <textarea value={editDraft} onChange={(event) => setEditDraft(event.target.value)} maxLength={5000} rows={3}
@@ -206,6 +213,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
                         </div>
                         {mine && (
                           <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                            <button type="button" className="button secondary" onClick={() => { setReplyingTo(message); setEditingId(null); }}>Reply</button>
                             {canEdit && <button type="button" className="button secondary" onClick={() => { setEditingId(message.id); setEditDraft(message.body); }}>Edit</button>}
                             <button type="button" className="button secondary" onClick={() => void deleteMessage(message)}>Delete</button>
                           </div>
@@ -216,11 +224,14 @@ export default function MessagesClient({ userId }: { userId: string }) {
                 );
               })}
             </div>
-            <form onSubmit={sendMessage} style={{ display: "flex", gap: 8, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+            <form onSubmit={sendMessage} style={{ display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+              {replyingTo && <div style={{ display: "flex", justifyContent: "space-between", gap: 8, background: "#211b2b", borderLeft: "3px solid #b58ae8", padding: 8, borderRadius: 8 }}><div><strong>Replying to {replyingTo.sender_id === userId ? "your message" : displayName(selected)}</strong><div className="muted">{replyingTo.body.slice(0, 120)}</div></div><button type="button" className="button secondary" onClick={() => setReplyingTo(null)}>Cancel</button></div>}
+              <div style={{ display: "flex", gap: 8 }}>
               <input value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={5000}
                 placeholder="Write a message…" aria-label="Write a message"
                 style={{ flex: 1, minWidth: 0, padding: 12, borderRadius: 10, border: "1px solid var(--line)", background: "#0f0c16", color: "white" }} />
               <button className="button" type="submit" disabled={sending || !draft.trim()}>{sending ? "Sending…" : "Send"}</button>
+              </div>
             </form>
           </>
         ) : (
