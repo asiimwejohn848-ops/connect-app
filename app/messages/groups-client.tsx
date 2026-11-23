@@ -21,6 +21,8 @@ export default function GroupsClient({ userId }: { userId: string }) {
   const [renameName, setRenameName] = useState("");
   const [chosen, setChosen] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editMessageDraft, setEditMessageDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [problem, setProblem] = useState(false);
@@ -159,6 +161,30 @@ export default function GroupsClient({ userId }: { userId: string }) {
     await loadSelected(selected);
   }
 
+  async function saveGroupMessageEdit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selected || !editingMessageId || !editMessageDraft.trim()) return;
+    setBusy(true); setProblem(false); setNotice("");
+    const { error } = await supabase.rpc("edit_group_message", {
+      p_message_id: editingMessageId, p_body: editMessageDraft.trim(),
+    });
+    setBusy(false);
+    if (error) { setProblem(true); setNotice(error.message); return; }
+    setEditingMessageId(null); setEditMessageDraft("");
+    setNotice("Message updated.");
+    await loadSelected(selected);
+  }
+
+  async function deleteGroupMessage(messageId: string) {
+    if (!window.confirm("Delete this message for everyone in the group?")) return;
+    setBusy(true); setProblem(false); setNotice("");
+    const { error } = await supabase.rpc("delete_group_message", { p_message_id: messageId });
+    setBusy(false);
+    if (error) { setProblem(true); setNotice(error.message); return; }
+    setNotice("Message deleted.");
+    if (selected) await loadSelected(selected);
+  }
+
   async function leaveGroup() {
     if (!selected) return;
     if (!window.confirm("Leave this group? You will no longer see its messages.")) return;
@@ -235,8 +261,19 @@ export default function GroupsClient({ userId }: { userId: string }) {
               {messages.length === 0 ? <p className="muted">No group messages yet. Say hello.</p> : messages.map((message) => (
                 <div key={message.id} style={{ justifySelf: message.sender_id === userId ? "end" : "start", maxWidth: "90%", background: message.sender_id === userId ? "#382451" : "#211b2b", border: "1px solid var(--line)", borderRadius: 12, padding: "8px 11px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}><span style={{ width: 22, height: 22, borderRadius: "50%", overflow: "hidden", display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#382451", flexShrink: 0 }}>{avatars[message.sender_id] ? <img src={avatars[message.sender_id]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (names[message.sender_id] || (message.sender_id === userId ? "Y" : "C")).slice(0, 1).toUpperCase()}</span><strong style={{ fontSize: ".78rem" }}>{message.sender_id === userId ? "You" : names[message.sender_id] || "CONNECT member"}</strong></div>
-                  <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message.body}</div>
+                  {editingMessageId === message.id ? <form onSubmit={saveGroupMessageEdit} style={{ display: "grid", gap: 6 }}>
+                    <textarea value={editMessageDraft} onChange={(event) => setEditMessageDraft(event.target.value)} maxLength={5000} rows={3}
+                      aria-label="Edit group message" style={{ width: "100%", boxSizing: "border-box", padding: 8, borderRadius: 8, background: "#0f0c16", color: "white", border: "1px solid var(--line)" }} />
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button className="button" type="submit" disabled={busy || !editMessageDraft.trim()}>Save</button>
+                      <button className="button secondary" type="button" onClick={() => { setEditingMessageId(null); setEditMessageDraft(""); }}>Cancel</button>
+                    </div>
+                  </form> : <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message.body}</div>}
                   <div className="muted" style={{ fontSize: ".7rem", marginTop: 4 }}>{new Date(message.created_at).toLocaleString()}</div>
+                  {message.sender_id === userId && editingMessageId !== message.id && <div style={{ display: "flex", gap: 6, marginTop: 5 }}>
+                    <button type="button" className="button secondary" disabled={busy} onClick={() => { setEditingMessageId(message.id); setEditMessageDraft(message.body); }} style={{ padding: "3px 7px", fontSize: ".72rem" }}>Edit</button>
+                    <button type="button" className="button secondary" disabled={busy} onClick={() => void deleteGroupMessage(message.id)} style={{ padding: "3px 7px", fontSize: ".72rem" }}>Delete</button>
+                  </div>}
                 </div>
               ))}
             </div>
