@@ -17,6 +17,7 @@ type Message = {
   body: string;
   created_at: string;
   read_at: string | null;
+  delivered_at: string | null;
   edited_at: string | null;
   reply_to_id: string | null;
   voice_path: string | null;
@@ -66,6 +67,15 @@ export default function MessagesClient({ userId }: { userId: string }) {
       setLoading(false);
       return;
     }
+    const deliveryTime = new Date().toISOString();
+    const { error: deliveryError } = await supabase.from("messages")
+      .update({ delivered_at: deliveryTime })
+      .eq("recipient_id", userId)
+      .is("delivered_at", null);
+    if (deliveryError) {
+      setProblem(true);
+      setNotice(deliveryError.message);
+    }
     const ids = [...new Set((rows ?? []).map((row: ContactRequest) => row.sender_id === userId ? row.recipient_id : row.sender_id))];
     if (!ids.length) {
       setContacts([]);
@@ -88,7 +98,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const loadMessages = useCallback(async (person: Profile) => {
     const { data, error } = await supabase
       .from("messages")
-      .select("id, sender_id, recipient_id, body, created_at, read_at, edited_at, reply_to_id, voice_path, attachment_path, attachment_name, attachment_mime, attachment_size, forwarded_from_sender_id, forwarded_from_name")
+      .select("id, sender_id, recipient_id, body, created_at, read_at, delivered_at, edited_at, reply_to_id, voice_path, attachment_path, attachment_name, attachment_mime, attachment_size, forwarded_from_sender_id, forwarded_from_name")
       .or(`and(sender_id.eq.${userId},recipient_id.eq.${person.id}),and(sender_id.eq.${person.id},recipient_id.eq.${userId})`)
       .order("created_at", { ascending: true });
     if (error) {
@@ -119,7 +129,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
       const readAt = new Date().toISOString();
       const { error: readError } = await supabase
         .from("messages")
-        .update({ read_at: readAt })
+        .update({ delivered_at: readAt, read_at: readAt })
         .in("id", unreadIds);
       if (!readError) {
         setMessages((current) => current.map((m) => unreadIds.includes(m.id) ? { ...m, read_at: readAt } : m));
@@ -488,7 +498,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
                         <div className="muted" style={{ fontSize: ".72rem", marginTop: 6 }}>
                           {new Date(message.created_at).toLocaleString()}
                           {message.edited_at ? " · Edited" : ""}
-                          {mine && message.read_at ? " · Read" : ""}
+                          {mine && message.read_at ? " · Read" : mine && message.delivered_at ? " · Delivered" : mine ? " · Sent" : ""}
                         </div>
                         {message.forwarded_from_sender_id && (
                           <div className="muted" style={{ fontSize: ".75rem", marginTop: 5, fontStyle: "italic" }}>
