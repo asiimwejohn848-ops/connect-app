@@ -131,6 +131,23 @@ export default function MessagesClient({ userId }: { userId: string }) {
     else setMessages([]);
   }, [selected, loadMessages]);
 
+  // Keep the open conversation synchronized when either participant changes a message.
+  useEffect(() => {
+    if (!selected) return;
+    const channel = supabase
+      .channel(`connect-messages-${[userId, selected.id].sort().join("-")}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "messages" },
+        () => { void loadMessages(selected); }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [selected, supabase, userId, loadMessages]);
+
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected || !draft.trim()) return;
