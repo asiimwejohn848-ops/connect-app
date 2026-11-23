@@ -543,11 +543,11 @@ export default function MessagesClient({ userId }: { userId: string }) {
   }
 
   function renderFormattedBody(body: string) {
-    const lines = body.split("\\n");
+    const lines = body.split("\n");
     return lines.map((line, lineIndex) => {
-      const bullet = /^\\s*[-•]\\s+/.test(line);
-      const content = bullet ? line.replace(/^\\s*[-•]\\s+/, "") : line;
-      const tokens = content.split(/(\\*\\*.*?\\*\\*|__.*?__|~~.*?~~|\\*[^*]+\\*|_[^_]+_)/g);
+      const bullet = /^\s*[-•]\s+/.test(line);
+      const content = bullet ? line.replace(/^\s*[-•]\s+/, "") : line;
+      const tokens = content.split(/(\*\*.*?\*\*|__.*?__|~~.*?~~|\*[^*]+\*|_[^_]+_)/g);
       const rendered = tokens.map((token, index) => {
         if (token.startsWith("**") && token.endsWith("**")) return <strong key={index}>{token.slice(2, -2)}</strong>;
         if (token.startsWith("__") && token.endsWith("__")) return <u key={index}>{token.slice(2, -2)}</u>;
