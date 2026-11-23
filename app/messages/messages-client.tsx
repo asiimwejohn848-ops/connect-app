@@ -29,6 +29,8 @@ type Message = {
 export default function MessagesClient({ userId }: { userId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const [contacts, setContacts] = useState<Profile[]>([]);
+  const [contactSearch, setContactSearch] = useState("");
+  const [messageSearch, setMessageSearch] = useState("");
   const [selected, setSelected] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
@@ -361,9 +363,14 @@ export default function MessagesClient({ userId }: { userId: string }) {
     <div style={{ display: "grid", gridTemplateColumns: "minmax(190px, 0.75fr) minmax(0, 1.6fr)", gap: 16, marginTop: 24 }}>
       <aside className="panel">
         <h2 style={{ marginTop: 0 }}>Conversations</h2>
+        <input value={contactSearch} onChange={(event) => setContactSearch(event.target.value)}
+          placeholder="Search contacts…" aria-label="Search contacts"
+          style={{ width: "100%", boxSizing: "border-box", margin: "4px 0 10px", padding: 10, borderRadius: 9, border: "1px solid var(--line)", background: "#0f0c16", color: "white" }} />
         {loading ? <p className="muted">Loading contacts…</p> : contacts.length === 0 ? (
           <p className="muted">You don't have accepted contacts yet. When someone accepts your contact request, they will appear here.</p>
-        ) : contacts.map((person) => (
+        ) : contacts.filter((person) => displayName(person).toLowerCase().includes(contactSearch.trim().toLowerCase())).length === 0 ? (
+          <p className="muted">No contacts match that search.</p>
+        ) : contacts.filter((person) => displayName(person).toLowerCase().includes(contactSearch.trim().toLowerCase())).map((person) => (
           <button key={person.id} type="button" onClick={() => { setSelected(person); setNotice(""); setProblem(false); }}
             className={selected?.id === person.id ? "button" : "button secondary"}
             style={{ display: "block", width: "100%", textAlign: "left", marginTop: 8 }}>
@@ -378,10 +385,20 @@ export default function MessagesClient({ userId }: { userId: string }) {
             <div style={{ borderBottom: "1px solid var(--line)", paddingBottom: 12 }}>
               <h2 style={{ margin: 0 }}>{displayName(selected)}</h2>
               {selected.username && <span className="muted">@{selected.username}</span>}
-              <button className="button secondary" type="button" onClick={() => void loadMessages(selected)} style={{ marginTop: 10 }}>Refresh conversation</button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                <button className="button secondary" type="button" onClick={() => void loadMessages(selected)}>Refresh conversation</button>
+                <input value={messageSearch} onChange={(event) => setMessageSearch(event.target.value)}
+                  placeholder="Search messages in this chat…" aria-label="Search messages in this conversation"
+                  style={{ flex: 1, minWidth: 160, padding: 9, borderRadius: 9, border: "1px solid var(--line)", background: "#0f0c16", color: "white" }} />
+              </div>
+              {messageSearch.trim() && <p className="muted" style={{ fontSize: ".78rem", margin: "6px 0 0" }}>
+                {messages.filter((message) => message.body.toLowerCase().includes(messageSearch.trim().toLowerCase())).length} matching messages
+              </p>}
             </div>
             <div aria-live="polite" style={{ flex: 1, display: "grid", alignContent: "start", gap: 10, padding: "16px 0", maxHeight: 420, overflowY: "auto" }}>
-              {messages.length === 0 ? <p className="muted">No messages yet. Start the conversation.</p> : messages.map((message) => {
+              {messages.filter((message) => message.body.toLowerCase().includes(messageSearch.trim().toLowerCase())).length === 0 ? (
+                <p className="muted">{messageSearch.trim() ? "No messages match that search." : "No messages yet. Start the conversation."}</p>
+              ) : messages.filter((message) => message.body.toLowerCase().includes(messageSearch.trim().toLowerCase())).map((message) => {
                 const mine = message.sender_id === userId;
                 const canEdit = mine && !message.read_at;
                 const repliedMessage = message.reply_to_id ? messages.find((item) => item.id === message.reply_to_id) : null;
