@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 
-type Person = { id: string; username: string | null; display_name: string | null };
+type Person = { id: string; username: string | null; display_name: string | null; avatar_url?: string | null };
 type Group = { id: string; name: string; created_by: string; created_at: string };
 type GroupMessage = { id: string; group_id: string; sender_id: string; body: string; created_at: string };
 type Member = { group_id: string; user_id: string; role: "admin" | "member" };
@@ -16,6 +16,7 @@ export default function GroupsClient({ userId }: { userId: string }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
+  const [avatars, setAvatars] = useState<Record<string, string>>({});
   const [groupName, setGroupName] = useState("");
   const [chosen, setChosen] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
@@ -50,12 +51,15 @@ export default function GroupsClient({ userId }: { userId: string }) {
     setMembers(rows);
     const ids = [...new Set(rows.map((row) => row.user_id))];
     if (ids.length) {
-      const { data: people } = await supabase.from("profiles").select("id, username, display_name").in("id", ids);
+      const { data: people } = await supabase.from("profiles").select("id, username, display_name, avatar_url").in("id", ids);
       const map: Record<string, string> = {};
+      const photoMap: Record<string, string> = {};
       (people ?? []).forEach((person: Person) => {
         map[person.id] = person.display_name || (person.username ? "@" + person.username : "CONNECT member");
+        if (person.avatar_url) photoMap[person.id] = person.avatar_url;
       });
       setNames(map);
+      setAvatars(photoMap);
     }
   }, [supabase]);
 
@@ -163,7 +167,7 @@ export default function GroupsClient({ userId }: { userId: string }) {
           {selected ? <>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", borderBottom: "1px solid var(--line)", paddingBottom: 10 }}>
               <div><strong>{selected.name}</strong><div className="muted" style={{ fontSize: ".8rem" }}>{members.length} members · {isAdmin ? "Admin" : "Member"}</div>
-                <div className="muted" style={{ fontSize: ".78rem" }}>{members.map((m) => names[m.user_id] || "CONNECT member").join(", ")}</div>
+                <div className="muted" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: ".78rem", marginTop: 6 }}>{members.map((m) => <span key={m.user_id} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><span style={{ width: 24, height: 24, borderRadius: "50%", overflow: "hidden", display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#382451", flexShrink: 0 }}>{avatars[m.user_id] ? <img src={avatars[m.user_id]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (names[m.user_id] || "C").slice(0, 1).toUpperCase()}</span>{names[m.user_id] || "CONNECT member"}</span>)}</div>
               </div>
               <button className="button secondary" type="button" onClick={() => void leaveGroup()} disabled={busy}>Leave group</button>
             </div>
@@ -188,7 +192,7 @@ export default function GroupsClient({ userId }: { userId: string }) {
             <div aria-live="polite" style={{ display: "grid", gap: 8, alignContent: "start", maxHeight: 260, overflowY: "auto", padding: "12px 0" }}>
               {messages.length === 0 ? <p className="muted">No group messages yet. Say hello.</p> : messages.map((message) => (
                 <div key={message.id} style={{ justifySelf: message.sender_id === userId ? "end" : "start", maxWidth: "90%", background: message.sender_id === userId ? "#382451" : "#211b2b", border: "1px solid var(--line)", borderRadius: 12, padding: "8px 11px" }}>
-                  <strong style={{ fontSize: ".78rem" }}>{message.sender_id === userId ? "You" : names[message.sender_id] || "CONNECT member"}</strong>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}><span style={{ width: 22, height: 22, borderRadius: "50%", overflow: "hidden", display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#382451", flexShrink: 0 }}>{avatars[message.sender_id] ? <img src={avatars[message.sender_id]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (names[message.sender_id] || (message.sender_id === userId ? "Y" : "C")).slice(0, 1).toUpperCase()}</span><strong style={{ fontSize: ".78rem" }}>{message.sender_id === userId ? "You" : names[message.sender_id] || "CONNECT member"}</strong></div>
                   <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message.body}</div>
                   <div className="muted" style={{ fontSize: ".7rem", marginTop: 4 }}>{new Date(message.created_at).toLocaleString()}</div>
                 </div>
