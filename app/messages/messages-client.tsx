@@ -636,6 +636,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
                           {message.edited_at ? " · Edited" : ""}
                           {mine && message.read_at ? " · Read" : mine && message.delivered_at ? " · Delivered" : mine ? " · Sent" : ""}
                         </div>
+                        {pinnedMessageIds.includes(message.id) && <div style={{ fontSize: ".73rem", color: "#d2b6f4", marginTop: 5 }}>◆ Pinned for you</div>}
                         {message.forwarded_from_sender_id && (
                           <div className="muted" style={{ fontSize: ".75rem", marginTop: 5, fontStyle: "italic" }}>
                             Forwarded · Originally sent by {message.forwarded_from_name || "a CONNECT member"}
@@ -653,6 +654,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
                           })}
                         </div>
                         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                          <button type="button" className="button secondary" onClick={async () => { try { await navigator.clipboard.writeText(message.body); setNotice("Message copied."); setProblem(false); } catch { setNotice("Could not copy this message. Check clipboard permissions."); setProblem(true); } }}>Copy</button>
                           <button type="button" className="button secondary" onClick={() => void togglePin(message.id)}>{pinnedMessageIds.includes(message.id) ? "Unpin" : "Pin"}</button>
                           <button type="button" className="button secondary" onClick={() => { setReplyingTo(message); setEditingId(null); }}>Reply</button>
                           {!message.voice_path && !message.attachment_path && (
