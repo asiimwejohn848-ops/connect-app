@@ -97,14 +97,22 @@ export default function GroupsClient({ userId }: { userId: string }) {
     if (cleanName.length < 2) { setProblem(true); setNotice("Group names must contain at least 2 characters."); return; }
     if (!chosen.length) { setProblem(true); setNotice("Choose at least one accepted contact to create a group."); return; }
     setBusy(true); setProblem(false); setNotice("");
-    const { data: group, error } = await supabase.from("group_conversations")
-      .insert({ name: cleanName, created_by: userId })
-      .select("id, name, created_by, created_at").single();
-    if (error || !group) { setBusy(false); setProblem(true); setNotice(error?.message ?? "Could not create group."); return; }
-    const { error: addError } = await supabase.from("group_members")
-      .insert(chosen.map((id) => ({ group_id: group.id, user_id: id, role: "member" })));
+    const { data: groupId, error } = await supabase.rpc("create_group_with_members", {
+      p_name: cleanName,
+      p_member_ids: chosen,
+    });
+    if (error || !groupId) {
+      setBusy(false); setProblem(true);
+      setNotice(error?.message ?? "Could not create group.");
+      return;
+    }
+    const { data: group, error: groupError } = await supabase.from("group_conversations")
+      .select("id, name, created_by, created_at").eq("id", groupId).single();
     setBusy(false);
-    if (addError) { setProblem(true); setNotice("Group was created, but adding members failed: " + addError.message); await loadGroups(); return; }
+    if (groupError || !group) {
+      setProblem(true); setNotice(groupError?.message ?? "Group created, but could not load it.");
+      await loadGroups(); return;
+    }
     setGroupName(""); setChosen([]);
     await loadGroups(); setSelected(group as Group); setNotice("Group created and members added.");
   }
