@@ -28,6 +28,7 @@ type Message = {
   forwarded_from_sender_id: string | null;
   forwarded_from_name: string | null;
 };
+type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string };
 
 export default function MessagesClient({ userId }: { userId: string }) {
   const supabase = useMemo(() => createClient(), []);
@@ -37,6 +38,7 @@ export default function MessagesClient({ userId }: { userId: string }) {
   const [selected, setSelected] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [reactions, setReactions] = useState<MessageReaction[]>([]);
   const [contactTyping, setContactTyping] = useState(false);
   const typingChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -136,6 +138,12 @@ export default function MessagesClient({ userId }: { userId: string }) {
     }
     const rows = (data ?? []) as Message[];
     setMessages(rows);
+    if (rows.length) {
+      const { data: reactionRows } = await supabase.from("message_reactions")
+        .select("id, message_id, user_id, emoji")
+        .in("message_id", rows.map((message) => message.id));
+      setReactions((reactionRows ?? []) as MessageReaction[]);
+    } else setReactions([]);
     const paths = rows.filter((message) => message.voice_path).map((message) => message.voice_path as string);
     const signedEntries = await Promise.all(paths.map(async (path) => {
       const { data: signed } = await supabase.storage.from("connect-voice-messages").createSignedUrl(path, 3600);
@@ -232,6 +240,21 @@ export default function MessagesClient({ userId }: { userId: string }) {
       void supabase.removeChannel(channel);
     };
   }, [selected, supabase, userId, loadMessages]);
+
+  async function toggleReaction(messageId: string, emoji: string) {
+    const existing = reactions.find((reaction) => reaction.message_id === messageId && reaction.user_id === userId && reaction.emoji === emoji);
+    if (existing) {
+      const { error } = await supabase.from("message_reactions").delete().eq("id", existing.id);
+      if (error) { setProblem(true); setNotice(error.message); return; }
+      setReactions((current) => current.filter((reaction) => reaction.id !== existing.id));
+    } else {
+      const { data, error } = await supabase.from("message_reactions")
+        .insert({ message_id: messageId, user_id: userId, emoji })
+        .select("id, message_id, user_id, emoji").single();
+      if (error) { setProblem(true); setNotice(error.message); return; }
+      if (data) setReactions((current) => [...current, data as MessageReaction]);
+    }
+  }
 
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -578,6 +601,17 @@ export default function MessagesClient({ userId }: { userId: string }) {
                             Forwarded · Originally sent by {message.forwarded_from_name || "a CONNECT member"}
                           </div>
                         )}
+                        <div aria-label="Message reactions" style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
+                          {["👍", "❤️", "😂", "😮", "😢", "🔥"].map((emoji) => {
+                            const matching = reactions.filter((reaction) => reaction.message_id === message.id && reaction.emoji === emoji);
+                            const mine = matching.some((reaction) => reaction.user_id === userId);
+                            return <button key={emoji} type="button" className="button secondary" aria-label={`React ${emoji}${mine ? ", remove reaction" : ""}`} aria-pressed={mine}
+                              onClick={() => void toggleReaction(message.id, emoji)}
+                              style={{ padding: "3px 7px", borderColor: mine ? "#b58ae8" : undefined, background: mine ? "#4a3265" : undefined, fontSize: ".8rem" }}>
+                              {emoji}{matching.length > 0 ? ` ${matching.length}` : ""}
+                            </button>;
+                          })}
+                        </div>
                         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                           <button type="button" className="button secondary" onClick={() => { setReplyingTo(message); setEditingId(null); }}>Reply</button>
                           {!message.voice_path && !message.attachment_path && (
