@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 
-type VipMessage = { id: string; sender_id: string; body: string; created_at: string };
+type VipMessage = { id: string; sender_id: string; body: string; created_at: string };\ntype VipReaction = { id: string; message_id: string; user_id: string; emoji: string };
 type Profile = { id: string; username: string | null; display_name: string | null };
 type PaymentRow = { id: string; plan_code: string; amount_ugx: number; status: string; created_at: string; transaction_reference: string };
 type VipNotice = { id: string; title: string; body: string; created_at: string; read_at: string | null };
@@ -22,7 +22,7 @@ function personName(person?: Profile) {
 export default function VipClient({ userId }: { userId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const [active, setActive] = useState(false);
-  const [messages, setMessages] = useState<VipMessage[]>([]);
+  const [messages, setMessages] = useState<VipMessage[]>([]);\n  const [reactions, setReactions] = useState<VipReaction[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState("");
   const [plan, setPlan] = useState("monthly");
@@ -69,6 +69,18 @@ export default function VipClient({ userId }: { userId: string }) {
     return () => { void supabase.removeChannel(channel); };
   }, [active, load, supabase]);
 
+  async function toggleReaction(messageId: string, emoji: string) {
+    const existing = reactions.find((reaction) => reaction.message_id === messageId && reaction.user_id === userId && reaction.emoji === emoji);
+    if (existing) {
+      const { error } = await supabase.from("connect_vip_message_reactions").delete().eq("id", existing.id);
+      if (error) { setProblem(true); setNotice(error.message); return; }
+    } else {
+      const { error } = await supabase.from("connect_vip_message_reactions").insert({ message_id: messageId, user_id: userId, emoji });
+      if (error) { setProblem(true); setNotice(error.message); return; }
+    }
+    await load();
+  }
+
   async function submitPayment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true); setProblem(false); setNotice("");
@@ -111,11 +123,18 @@ export default function VipClient({ userId }: { userId: string }) {
             <div><p style={{ color: "#c8aaff", fontWeight: 800, letterSpacing: ".12em", fontSize: ".72rem", margin: 0 }}>MEMBERS ONLY</p><h2 style={{ margin: "5px 0" }}>💎 VIP Lounge</h2></div>
             <span className="button" style={{ cursor: "default" }}>VIP ACTIVE</span>
           </div>
-          <p className="muted">A shared live chat for active CONNECT VIP members. Keep conversations respectful.</p>
+          <p className="muted">Your private-feeling members' lounge: real-time conversation, exclusive reactions, VIP identity and a members-only community.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(135px,1fr))", gap: 8, margin: "14px 0 18px" }}>
+            {[["💎","VIP identity","Exclusive member badge"],["⚡","Live lounge","Instant shared chat"],["💜","VIP reactions","Six expressive reactions"],["🎁","Gift Messages","Unlockable special messages"]].map(([icon,title,desc]) => (
+              <div key={title} style={{ padding: 12, borderRadius: 12, background: "#21172f", border: "1px solid #49335f" }}>
+                <div style={{ fontSize: 22 }}>{icon}</div><strong style={{ display: "block" }}>{title}</strong><small className="muted">{desc}</small>
+              </div>
+            ))}
+          </div>
           <div aria-live="polite" style={{ minHeight: 300, maxHeight: 480, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: 12, background: "#100c18", border: "1px solid var(--line)", borderRadius: 12 }}>
             {messages.length === 0 ? <p className="muted">Welcome to the VIP Lounge. Start the conversation.</p> : messages.map((message) => (
               <article key={message.id} style={{ alignSelf: message.sender_id === userId ? "flex-end" : "flex-start", maxWidth: "85%", background: message.sender_id === userId ? "#382451" : "#211a2c", padding: "10px 13px", borderRadius: 12 }}>
-                <strong style={{ fontSize: ".8rem", color: "#d6baff" }}>{message.sender_id === userId ? "You" : names[message.sender_id] || "VIP member"}</strong>
+                <strong style={{ fontSize: ".8rem", color: "#d6baff" }}>{message.sender_id === userId ? "You" : names[message.sender_id] || "VIP member"} <span title="Verified active VIP member" style={{ color: "#c8aaff" }}>💎 VIP</span></strong>
                 <p style={{ margin: "4px 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message.body}</p>
                 <small className="muted">{new Date(message.created_at).toLocaleTimeString()}</small>
               </article>
