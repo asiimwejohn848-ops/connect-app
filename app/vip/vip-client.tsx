@@ -3,7 +3,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 
-type VipMessage = { id: string; sender_id: string; body: string; created_at: string };\ntype VipReaction = { id: string; message_id: string; user_id: string; emoji: string };
+type VipMessage = { id: string; sender_id: string; body: string; created_at: string };
+type VipReaction = { id: string; message_id: string; user_id: string; emoji: string };
 type Profile = { id: string; username: string | null; display_name: string | null };
 type PaymentRow = { id: string; plan_code: string; amount_ugx: number; status: string; created_at: string; transaction_reference: string };
 type VipNotice = { id: string; title: string; body: string; created_at: string; read_at: string | null };
@@ -22,7 +23,8 @@ function personName(person?: Profile) {
 export default function VipClient({ userId }: { userId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const [active, setActive] = useState(false);
-  const [messages, setMessages] = useState<VipMessage[]>([]);\n  const [reactions, setReactions] = useState<VipReaction[]>([]);
+  const [messages, setMessages] = useState<VipMessage[]>([]);
+  const [reactions, setReactions] = useState<VipReaction[]>([]);
   const [names, setNames] = useState<Record<string, string>>({});
   const [draft, setDraft] = useState("");
   const [plan, setPlan] = useState("monthly");
@@ -50,6 +52,11 @@ export default function VipClient({ userId }: { userId: string }) {
     if (error) { setProblem(true); setNotice(error.message); return; }
     const list = (rows ?? []) as VipMessage[];
     setMessages(list);
+    if (list.length) {
+      const { data: reactionRows } = await supabase.from("connect_vip_message_reactions")
+        .select("id, message_id, user_id, emoji").in("message_id", list.map((message) => message.id));
+      setReactions((reactionRows ?? []) as VipReaction[]);
+    } else setReactions([]);
     const ids = [...new Set(list.map((message) => message.sender_id))];
     if (ids.length) {
       const { data: people } = await supabase.from("profiles").select("id, username, display_name").in("id", ids);
