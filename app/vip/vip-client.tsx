@@ -144,6 +144,17 @@ export default function VipClient({ userId }: { userId: string }) {
                 <strong style={{ fontSize: ".8rem", color: "#d6baff" }}>{message.sender_id === userId ? "You" : names[message.sender_id] || "VIP member"} <span title="Verified active VIP member" style={{ color: "#c8aaff" }}>💎 VIP</span></strong>
                 <p style={{ margin: "4px 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message.body}</p>
                 <small className="muted">{new Date(message.created_at).toLocaleTimeString()}</small>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
+                  {["💜","🔥","👏","😂","✨","🚀"].map((emoji) => {
+                    const matching = reactions.filter((reaction) => reaction.message_id === message.id && reaction.emoji === emoji);
+                    const mine = matching.some((reaction) => reaction.user_id === userId);
+                    return <button key={emoji} type="button" onClick={() => void toggleReaction(message.id, emoji)}
+                      aria-label={"React with " + emoji} className="button secondary"
+                      style={{ padding: "3px 7px", fontSize: ".82rem", borderColor: mine ? "#b48be8" : "var(--line)", background: mine ? "#4b2d6b" : "transparent" }}>
+                      {emoji}{matching.length > 0 ? " " + matching.length : ""}
+                    </button>;
+                  })}
+                </div>
               </article>
             ))}
           </div>
