@@ -1,10 +1,10 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import VipExtras from "./vip-extras";
 
-type VipMessage = { id: string; sender_id: string; body: string; created_at: string };
+type VipMessage = { id: string; sender_id: string; body: string; created_at: string; reply_to_message_id: string | null; message_type: "text" | "voice"; audio_path: string | null };
 type VipReaction = { id: string; message_id: string; user_id: string; emoji: string };
 type Profile = { id: string; username: string | null; display_name: string | null };
 type PaymentRow = { id: string; plan_code: string; amount_ugx: number; status: string; created_at: string; transaction_reference: string };
@@ -35,7 +35,12 @@ export default function VipClient({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [problem, setProblem] = useState(false);
-  const [vipTheme, setVipTheme] = useState("midnight");
+  const [replyTo, setReplyTo] = useState<VipMessage | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceUrls, setVoiceUrls] = useState<Record<string, string>>({});
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const load = useCallback(async () => {
     const now = new Date().toISOString();
@@ -50,10 +55,15 @@ export default function VipClient({ userId }: { userId: string }) {
     setNotices((notificationRows ?? []) as VipNotice[]);
     if (!isActive) { setMessages([]); return; }
     const { data: rows, error } = await supabase.from("connect_vip_messages")
-      .select("id, sender_id, body, created_at").order("created_at", { ascending: true }).limit(100);
+      .select("id, sender_id, body, created_at, reply_to_message_id, message_type, audio_path").order("created_at", { ascending: true }).limit(100);
     if (error) { setProblem(true); setNotice(error.message); return; }
     const list = (rows ?? []) as VipMessage[];
     setMessages(list);
+    const audioEntries = await Promise.all(list.filter((m) => m.message_type === "voice" && m.audio_path).map(async (m) => {
+      const { data } = await supabase.storage.from("connect-vip-voice").createSignedUrl(m.audio_path as string, 3600);
+      return data?.signedUrl ? [m.id, data.signedUrl] as const : null;
+    }));
+    setVoiceUrls(Object.fromEntries(audioEntries.filter((x): x is readonly [string, string] => Boolean(x))));
     if (list.length) {
       const { data: reactionRows } = await supabase.from("connect_vip_message_reactions")
         .select("id, message_id, user_id, emoji").in("message_id", list.map((message) => message.id));
@@ -108,12 +118,60 @@ export default function VipClient({ userId }: { userId: string }) {
     event.preventDefault();
     if (!draft.trim()) return;
     setBusy(true); setProblem(false); setNotice("");
-    const { error } = await supabase.from("connect_vip_messages").insert({ sender_id: userId, body: draft.trim() });
+    const { error } = await supabase.from("connect_vip_messages").insert({ sender_id: userId, body: draft.trim(), reply_to_message_id: replyTo?.id ?? null, message_type: "text" });
     setBusy(false);
     if (error) { setProblem(true); setNotice(error.message); return; }
     setDraft("");
+    setReplyTo(null);
     await load();
   }
+
+  async function startVoiceRecording() {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+        setProblem(true); setNotice("Voice recording is not supported by this browser. Try the latest Chrome or Edge."); return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      streamRef.current = stream;
+      const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onstop = async () => {
+        setRecording(false); setVoiceBusy(true);
+        try {
+          const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+          if (!blob.size) throw new Error("The recording was empty. Please try again.");
+          if (blob.size > 10 * 1024 * 1024) throw new Error("This voice note is over 10 MB. Please record a shorter note.");
+          const extension = blob.type.includes("mp4") ? "mp4" : blob.type.includes("ogg") ? "ogg" : "webm";
+          const path = userId + "/" + crypto.randomUUID() + "." + extension;
+          const { error: uploadError } = await supabase.storage.from("connect-vip-voice").upload(path, blob, { contentType: blob.type, upsert: false });
+          if (uploadError) throw uploadError;
+          const { error: insertError } = await supabase.from("connect_vip_messages").insert({
+            sender_id: userId, body: "🎙️ Voice note", message_type: "voice", audio_path: path, reply_to_message_id: replyTo?.id ?? null
+          });
+          if (insertError) { await supabase.storage.from("connect-vip-voice").remove([path]); throw insertError; }
+          setReplyTo(null); setNotice("Voice note sent."); await load();
+        } catch (error) {
+          setProblem(true); setNotice(error instanceof Error ? error.message : "Could not send the voice note.");
+        } finally { setVoiceBusy(false); }
+      };
+      recorderRef.current = recorder; recorder.start(); setRecording(true); setProblem(false);
+      setNotice("Recording… select Stop and send when finished.");
+    } catch (error) {
+      setProblem(true); setNotice(error instanceof Error ? error.message : "Microphone permission was not granted.");
+    }
+  }
+
+  function stopVoiceRecording() {
+    if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
+    streamRef.current?.getTracks().forEach((track) => track.stop()); streamRef.current = null;
+  }
+
+  useEffect(() => () => {
+    if (recorderRef.current && recorderRef.current.state !== "inactive") recorderRef.current.stop();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -140,14 +198,19 @@ export default function VipClient({ userId }: { userId: string }) {
               </div>
             ))}
           </div>
-          <VipExtras userId={userId} messages={messages} onThemeChange={setVipTheme} />
-          <div aria-live="polite" style={{ minHeight: 300, maxHeight: 480, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: 12, background: vipTheme === "gold" ? "#211a0c" : vipTheme === "ocean" ? "#0c1b2a" : "#100c18", border: "1px solid var(--line)", borderRadius: 12 }}>
+          <VipExtras userId={userId} />
+          <div aria-live="polite" style={{ minHeight: 300, maxHeight: 480, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: 12, background: "#100c18", border: "1px solid var(--line)", borderRadius: 12 }}>
             {messages.length === 0 ? <p className="muted">Welcome to the VIP Lounge. Start the conversation.</p> : messages.map((message) => (
               <article key={message.id} style={{ alignSelf: message.sender_id === userId ? "flex-end" : "flex-start", maxWidth: "85%", background: message.sender_id === userId ? "#382451" : "#211a2c", padding: "10px 13px", borderRadius: 12 }}>
                 <strong style={{ fontSize: ".8rem", color: "#d6baff" }}>{message.sender_id === userId ? "You" : names[message.sender_id] || "VIP member"} <span title="Verified active VIP member" style={{ color: "#c8aaff" }}>💎 VIP</span></strong>
-                <p style={{ margin: "4px 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message.body}</p>
+                {message.reply_to_message_id && (() => {
+                  const original = messages.find((item) => item.id === message.reply_to_message_id);
+                  return original ? <div style={{ borderLeft: "3px solid #b48be8", padding: "5px 8px", margin: "5px 0", background: "#171020", borderRadius: 6, fontSize: ".82rem" }}><strong>↪ Replying to {original.sender_id === userId ? "you" : names[original.sender_id] || "VIP member"}</strong><div className="muted">{original.message_type === "voice" ? "🎙️ Voice note" : original.body}</div></div> : null;
+                })()}
+                {message.message_type === "voice" ? (voiceUrls[message.id] ? <audio controls preload="none" src={voiceUrls[message.id]} style={{ display: "block", maxWidth: "100%", width: 250, margin: "6px 0" }} /> : <p className="muted">🎙️ Voice note loading…</p>) : <p style={{ margin: "4px 0", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{message.body}</p>}
                 <small className="muted">{new Date(message.created_at).toLocaleTimeString()}</small>
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 8 }}>
+                  <button type="button" className="button secondary" onClick={() => setReplyTo(message)} style={{ padding: "3px 7px", fontSize: ".78rem" }}>↩ Reply</button>
                   {["💜","🔥","👏","😂","✨","🚀"].map((emoji) => {
                     const matching = reactions.filter((reaction) => reaction.message_id === message.id && reaction.emoji === emoji);
                     const mine = matching.some((reaction) => reaction.user_id === userId);
@@ -161,10 +224,21 @@ export default function VipClient({ userId }: { userId: string }) {
               </article>
             ))}
           </div>
+          {replyTo && <div style={{ marginTop: 10, padding: 9, borderLeft: "3px solid #b48be8", background: "#21172f", borderRadius: 7 }}>
+            <strong>Replying to {replyTo.sender_id === userId ? "your message" : names[replyTo.sender_id] || "VIP member"}</strong>
+            <span className="muted"> · {replyTo.message_type === "voice" ? "Voice note" : replyTo.body.slice(0, 100)}</span>
+            <button type="button" className="button secondary" onClick={() => setReplyTo(null)} style={{ marginLeft: 8, padding: "2px 7px" }}>Cancel</button>
+          </div>}
           <form onSubmit={sendMessage} style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <input value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={3000} placeholder="Write to the VIP Lounge…" aria-label="VIP message" style={{ flex: 1, minWidth: 0, padding: 12, borderRadius: 10, background: "#100c18", color: "white", border: "1px solid var(--line)" }} />
             <button className="button" type="submit" disabled={busy || !draft.trim()}>{busy ? "…" : "Send"}</button>
           </form>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 9 }}>
+            <button className="button secondary" type="button" onClick={recording ? stopVoiceRecording : () => void startVoiceRecording()} disabled={voiceBusy}>
+              {recording ? "■ Stop & send voice note" : voiceBusy ? "Sending voice note…" : "🎙️ Record voice note"}
+            </button>
+            <small className="muted">Voice clarity uses browser echo cancellation, noise suppression and auto gain controls. Microphone permission is requested only when recording.</small>
+          </div>
         </section>
       ) : (
         <section className="panel">
