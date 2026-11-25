@@ -35,6 +35,7 @@ export default function VipClient({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [problem, setProblem] = useState(false);
+  const [vipTheme, setVipTheme] = useState("midnight");
 
   const load = useCallback(async () => {
     const now = new Date().toISOString();
@@ -139,8 +140,8 @@ export default function VipClient({ userId }: { userId: string }) {
               </div>
             ))}
           </div>
-          <VipExtras userId={userId} messages={messages} />
-          <div aria-live="polite" style={{ minHeight: 300, maxHeight: 480, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: 12, background: "#100c18", border: "1px solid var(--line)", borderRadius: 12 }}>
+          <VipExtras userId={userId} messages={messages} onThemeChange={setVipTheme} />
+          <div aria-live="polite" style={{ minHeight: 300, maxHeight: 480, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: 12, background: vipTheme === "gold" ? "#211a0c" : vipTheme === "ocean" ? "#0c1b2a" : "#100c18", border: "1px solid var(--line)", borderRadius: 12 }}>
             {messages.length === 0 ? <p className="muted">Welcome to the VIP Lounge. Start the conversation.</p> : messages.map((message) => (
               <article key={message.id} style={{ alignSelf: message.sender_id === userId ? "flex-end" : "flex-start", maxWidth: "85%", background: message.sender_id === userId ? "#382451" : "#211a2c", padding: "10px 13px", borderRadius: 12 }}>
                 <strong style={{ fontSize: ".8rem", color: "#d6baff" }}>{message.sender_id === userId ? "You" : names[message.sender_id] || "VIP member"} <span title="Verified active VIP member" style={{ color: "#c8aaff" }}>💎 VIP</span></strong>
