@@ -84,19 +84,21 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $$
+as $
 begin
-  if new.status = 'active' and (tg_op = 'INSERT' or old.status is distinct from 'active') then
-    insert into public.connect_vip_notifications(user_id,title,body)
-    values (
-      new.user_id,
-      'Welcome to CONNECT VIP',
-      'Your payment has been verified and your CONNECT VIP membership is now active. Welcome! You can now enter VIP Chat and enjoy your Premium benefits.'
-    );
+  if new.status = 'active' then
+    if tg_op = 'INSERT' or old.status is distinct from 'active' then
+      insert into public.connect_vip_notifications(user_id,title,body)
+      values (
+        new.user_id,
+        'Welcome to CONNECT VIP',
+        'Your payment has been verified and your CONNECT VIP membership is now active. Welcome! You can now enter VIP Chat and enjoy your Premium benefits.'
+      );
+    end if;
   end if;
   return new;
 end;
-$$;
+$;
 
 drop trigger if exists connect_vip_activation_notice on public.connect_subscriptions;
 create trigger connect_vip_activation_notice
