@@ -128,7 +128,7 @@ as $$
   );
 $$;
 revoke all on function public.has_active_connect_vip() from public, anon;
-grant execute on function public.has_active_connect_vip(uuid) to authenticated;
+grant execute on function public.has_active_connect_vip() to authenticated;
 
 create table if not exists public.connect_vip_messages (
   id uuid primary key default gen_random_uuid(),
