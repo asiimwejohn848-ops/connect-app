@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 260" role="img" aria-labelledby="title desc">
+  <title id="title">CONNECT</title>
+  <desc id="desc">Purple connection emblem with three people and a silver orbit, beside the CONNECT wordmark.</desc>
+  <defs>
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e879ff"/>
+      <stop offset=".48" stop-color="#8b20f5"/>
+      <stop offset="1" stop-color="#4c12a8"/>
+    </linearGradient>
+    <linearGradient id="silver" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#b8b2c5"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(18 18)">
+    <path d="M170 18a104 104 0 1 0 88 159l-35-25a61 61 0 1 1-52-96c22 0 42 12 53 29l36-24A104 104 0 0 0 170 18Z" fill="url(#purple)"/>
+    <circle cx="154" cy="83" r="17" fill="#fff"/>
+    <circle cx="207" cy="93" r="13" fill="#fff"/>
+    <circle cx="111" cy="96" r="13" fill="#fff"/>
+    <path d="M123 145c2-28 17-42 31-42s30 14 32 42" fill="#fff"/>
+    <path d="M190 137c2-18 11-28 22-28 9 0 17 7 21 19M84 128c4-19 12-28 24-28" fill="none" stroke="#fff" stroke-width="13" stroke-linecap="round"/>
+    <path d="M24 166c53 25 152 4 240-57 36-25 62-53 74-78-2 36-30 79-74 112-81 61-187 78-240 23Z" fill="none" stroke="url(#silver)" stroke-width="12" stroke-linecap="round"/>
+    <path d="M265 23h32a15 15 0 0 1 15 15v20a15 15 0 0 1-15 15h-13l-15 12 3-12h-7a15 15 0 0 1-15-15V38a15 15 0 0 1 15-15Z" fill="url(#purple)"/>
+    <circle cx="271" cy="48" r="4" fill="#fff"/><circle cx="284" cy="48" r="4" fill="#fff"/><circle cx="297" cy="48" r="4" fill="#fff"/>
+  </g>
+  <text x="365" y="123" fill="url(#silver)" font-family="Arial, Helvetica, sans-serif" font-size="76" font-weight="800" letter-spacing="2">CONNECT</text>
+  <path d="M369 150h320" stroke="#922cff" stroke-width="3" stroke-linecap="round"/>
+  <text x="370" y="185" fill="#d7c5f4" font-family="Arial, Helvetica, sans-serif" font-size="23" letter-spacing="4">COMMUNICATION WITHOUT BOUNDARIES</text>
+  <text x="370" y="220" fill="#a96bff" font-family="Arial, Helvetica, sans-serif" font-size="15" letter-spacing="2">A PRODUCT OF CIZZY TECHNOLOGIES</text>
+</svg>
