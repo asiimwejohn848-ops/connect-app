@@ -84,10 +84,10 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 begin
-  if new.status = 'active' then
-    if tg_op = 'INSERT' or old.status is distinct from 'active' then
+  if tg_op = 'INSERT' then
+    if new.status = 'active' then
       insert into public.connect_vip_notifications(user_id,title,body)
       values (
         new.user_id,
@@ -95,17 +95,24 @@ begin
         'Your payment has been verified and your CONNECT VIP membership is now active. Welcome! You can now enter VIP Chat and enjoy your Premium benefits.'
       );
     end if;
+  elsif new.status = 'active' and old.status is distinct from 'active' then
+    insert into public.connect_vip_notifications(user_id,title,body)
+    values (
+      new.user_id,
+      'Welcome to CONNECT VIP',
+      'Your payment has been verified and your CONNECT VIP membership is now active. Welcome! You can now enter VIP Chat and enjoy your Premium benefits.'
+    );
   end if;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists connect_vip_activation_notice on public.connect_subscriptions;
 create trigger connect_vip_activation_notice
 after insert or update of status on public.connect_subscriptions
 for each row execute function public.notify_connect_vip_activation();
 
-create or replace function public.has_active_connect_vip(p_user_id uuid default auth.uid())
+create or replace function public.has_active_connect_vip()
 returns boolean
 language sql
 stable
@@ -114,13 +121,13 @@ set search_path = ''
 as $$
   select exists (
     select 1 from public.connect_subscriptions s
-    where s.user_id = p_user_id
+    where s.user_id = auth.uid()
       and s.status = 'active'
       and s.starts_at <= now()
       and s.ends_at > now()
   );
 $$;
-revoke all on function public.has_active_connect_vip(uuid) from public, anon;
+revoke all on function public.has_active_connect_vip() from public, anon;
 grant execute on function public.has_active_connect_vip(uuid) to authenticated;
 
 create table if not exists public.connect_vip_messages (
