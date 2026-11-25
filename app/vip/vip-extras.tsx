@@ -3,34 +3,29 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 
-type Message = { id: string; body: string };
 type Poll = { id: string; question: string; options: string[] };
 type Vote = { poll_id: string; user_id: string; option_index: number };
 type Member = { user_id: string; display_name: string | null; username: string | null };
 
-export default function VipExtras({ userId, messages, onThemeChange }: { userId: string; messages: Message[]; onThemeChange: (theme: string) => void }) {
+export default function VipExtras({ userId }: { userId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState("polls");
-  const [theme, setTheme] = useState("midnight");
   const [polls, setPolls] = useState<Poll[]>([]);
   const [votes, setVotes] = useState<Vote[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [saved, setSaved] = useState<string[]>([]);
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState("Yes\nNo");
   const [error, setError] = useState("");
 
   async function refresh() {
-    const [p, v, s, m] = await Promise.all([
+    const [p, v, m] = await Promise.all([
       supabase.from("connect_vip_polls").select("id,question,options").order("created_at", { ascending: false }).limit(20),
       supabase.from("connect_vip_poll_votes").select("poll_id,user_id,option_index"),
-      supabase.from("connect_vip_saved_messages").select("message_id").eq("user_id", userId),
       supabase.rpc("get_connect_vip_directory")
     ]);
-    if (p.error || v.error || s.error || m.error) setError([p.error, v.error, s.error, m.error].find(Boolean)?.message || "Could not load VIP extras.");
+    if (p.error || v.error || m.error) setError([p.error, v.error, m.error].find(Boolean)?.message || "Could not load VIP extras.");
     setPolls((p.data || []) as Poll[]);
     setVotes((v.data || []) as Vote[]);
-    setSaved((s.data || []).map((x: { message_id: string }) => x.message_id));
     setMembers((m.data || []) as Member[]);
   }
 
@@ -51,23 +46,11 @@ export default function VipExtras({ userId, messages, onThemeChange }: { userId:
     await refresh();
   }
 
-  async function toggleSave(messageId: string) {
-    const result = saved.includes(messageId)
-      ? await supabase.from("connect_vip_saved_messages").delete().eq("user_id", userId).eq("message_id", messageId)
-      : await supabase.from("connect_vip_saved_messages").insert({ user_id: userId, message_id: messageId });
-    if (result.error) { setError(result.error.message); return; }
-    await refresh();
-  }
-
   return <section className="panel" style={{ borderColor: "#7653a2" }}>
-    <h3 style={{ marginTop: 0 }}>✨ VIP Extras</h3>
+    <h3 style={{ marginTop: 0 }}>✨ VIP Community</h3>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-      <button className="button secondary" type="button" onClick={() => setTab("polls")}>📊 Polls</button>
-      <button className="button secondary" type="button" onClick={() => setTab("members")}>👑 Members</button>
-      <button className="button secondary" type="button" onClick={() => setTab("saved")}>🔖 Saved ({saved.length})</button>
-      <select aria-label="VIP chat theme" value={theme} onChange={e => { setTheme(e.target.value); onThemeChange(e.target.value); }} style={{ padding: 9, borderRadius: 8, background: theme === "gold" ? "#332711" : theme === "ocean" ? "#102b40" : "#21172f", color: "white" }}>
-        <option value="midnight">Midnight Purple</option><option value="gold">Royal Gold</option><option value="ocean">Ocean Blue</option>
-      </select>
+      <button className="button secondary" type="button" onClick={() => setTab("polls")}>📊 Community polls</button>
+      <button className="button secondary" type="button" onClick={() => setTab("members")}>👑 VIP directory</button>
     </div>
     {error && <p role="alert" className="notice">{error}</p>}
     {tab === "polls" && <div style={{ marginTop: 12 }}>
@@ -90,23 +73,12 @@ export default function VipExtras({ userId, messages, onThemeChange }: { userId:
           })}
         </div>;
       })}
+      {!polls.length && <p className="muted">No polls yet. Start one for the community.</p>}
     </div>}
     {tab === "members" && <div style={{ marginTop: 12 }}>
       <strong>Active Premium members</strong><p className="muted">Only public display names and usernames are listed.</p>
       {members.map(member => <p key={member.user_id}>💎 {member.display_name || (member.username ? "@" + member.username : "CONNECT VIP member")}</p>)}
-      {!members.length && <p className="muted">No other active VIP members to display yet.</p>}
+      {!members.length && <p className="muted">No active VIP members to display yet.</p>}
     </div>}
-    {tab === "saved" && <div style={{ marginTop: 12 }}>
-      <strong>Your saved messages</strong>
-      {messages.filter(message => saved.includes(message.id)).map(message => <div key={message.id} style={{ borderTop: "1px solid var(--line)", padding: "8px 0" }}>{message.body}<button className="button secondary" type="button" onClick={() => void toggleSave(message.id)} style={{ marginLeft: 8 }}>Remove</button></div>)}
-      {!saved.length && <p className="muted">Use the bookmark control below a chat message to save it.</p>}
-    </div>}
-    <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
-      <strong>Bookmark messages</strong>
-      {messages.slice(-8).map(message => <div key={message.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "5px 0" }}>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{message.body}</span>
-        <button type="button" className="button secondary" onClick={() => void toggleSave(message.id)}>{saved.includes(message.id) ? "Saved" : "🔖 Save"}</button>
-      </div>)}
-    </div>
   </section>;
 }
