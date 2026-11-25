@@ -56,7 +56,9 @@ export default function LoginPage() {
   return (
     <main className="shell" style={{ maxWidth: 500 }}>
       <div className="panel">
-        <div className="brand">CON<span>NE</span>CT</div>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+          <img src="/connect-logo.svg" alt="CONNECT — Communication Without Boundaries" width={280} style={{ width: "100%", maxWidth: 280, height: "auto" }} />
+        </div>
         <p className="muted" style={{ marginTop: 2 }}>A product of Cizzy Technologies</p>
         <div className="notice" style={{ margin: "20px 0" }}>Use an email address you control. Email confirmation should remain enabled for account security.</div>
         <div style={{ display: "flex", gap: 8 }}>
