@@ -864,9 +864,16 @@ export default function MessagesClient({ userId }: { userId: string }) {
                 <button type="button" className="button secondary" title="Bullet list" aria-label="Bullet list" onClick={() => applyFormatting("- ", "")} disabled={sending}>• List</button>
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
-                <textarea ref={composerRef} value={draft} onChange={(event) => handleDraftChange(event.target.value)} maxLength={5000}
-                  rows={2} placeholder="Write a message…" aria-label="Write a message"
-                  style={{ flex: 1, minWidth: 0, resize: "vertical", padding: 12, borderRadius: 10, border: "1px solid var(--line)", background: "#0f0c16", color: "white", font: "inherit" }} />
+                <textarea ref={composerRef} value={draft} onChange={(event) => {
+                    handleDraftChange(event.target.value);
+                    const area = event.currentTarget;
+                    area.style.height = "auto";
+                    const maxHeight = Math.max(140, Math.floor(window.innerHeight * 0.45));
+                    area.style.height = `${Math.min(area.scrollHeight, maxHeight)}px`;
+                    area.style.overflowY = area.scrollHeight > maxHeight ? "auto" : "hidden";
+                  }} maxLength={5000}
+                  rows={4} placeholder="Write a message…" aria-label="Write a message"
+                  style={{ flex: 1, minWidth: 0, minHeight: 120, maxHeight: "45vh", resize: "vertical", overflowY: "hidden", padding: 12, borderRadius: 10, border: "1px solid var(--line)", background: "#0f0c16", color: "white", font: "inherit", lineHeight: 1.5 }} />
                 <button className="button" type="submit" disabled={sending || !draft.trim()}>{sending ? "Sending…" : "Send"}</button>
                 <button className="button secondary" type="button" onClick={() => fileInputRef.current?.click()} disabled={sending}>Attach file</button>
                 <button className="button secondary" type="button" onClick={() => void recordVoiceMessage()} disabled={sending}>
