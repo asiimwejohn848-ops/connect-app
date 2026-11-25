@@ -17,6 +17,7 @@ export default async function MessagesPage() {
         <nav style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Link className="button secondary" href="/contacts">Contacts</Link>
           <Link className="button secondary" href="/gifts">Gift Messages</Link>
+          <Link className="button secondary" href="/vip">VIP Chat</Link>
           <Link className="button secondary" href="/">Home</Link>
         </nav>
       </header>
