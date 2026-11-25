@@ -14,6 +14,7 @@ export default async function GiftsPage() {
         <Link className="brand" href="/">CON<span style={{ color: "var(--accent)" }}>NE</span>CT</Link>
         <nav style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Link className="button secondary" href="/messages">Messages</Link>
+          <Link className="button secondary" href="/vip">VIP Chat</Link>
           <Link className="button secondary" href="/">Home</Link>
         </nav>
       </header>
