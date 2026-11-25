@@ -16,6 +16,7 @@ export default async function MessagesPage() {
         <Link className="brand" href="/">CON<span style={{ color: "var(--accent)" }}>NE</span>CT</Link>
         <nav style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <Link className="button secondary" href="/contacts">Contacts</Link>
+          <Link className="button secondary" href="/gifts">Gift Messages</Link>
           <Link className="button secondary" href="/">Home</Link>
         </nav>
       </header>
