@@ -8,7 +8,7 @@ type Poll = { id: string; question: string; options: string[] };
 type Vote = { poll_id: string; user_id: string; option_index: number };
 type Member = { user_id: string; display_name: string | null; username: string | null };
 
-export default function VipExtras({ userId, messages }: { userId: string; messages: Message[] }) {
+export default function VipExtras({ userId, messages, onThemeChange }: { userId: string; messages: Message[]; onThemeChange: (theme: string) => void }) {
   const supabase = useMemo(() => createClient(), []);
   const [tab, setTab] = useState("polls");
   const [theme, setTheme] = useState("midnight");
@@ -65,7 +65,7 @@ export default function VipExtras({ userId, messages }: { userId: string; messag
       <button className="button secondary" type="button" onClick={() => setTab("polls")}>📊 Polls</button>
       <button className="button secondary" type="button" onClick={() => setTab("members")}>👑 Members</button>
       <button className="button secondary" type="button" onClick={() => setTab("saved")}>🔖 Saved ({saved.length})</button>
-      <select aria-label="VIP chat theme" value={theme} onChange={e => setTheme(e.target.value)} style={{ padding: 9, borderRadius: 8, background: theme === "gold" ? "#332711" : theme === "ocean" ? "#102b40" : "#21172f", color: "white" }}>
+      <select aria-label="VIP chat theme" value={theme} onChange={e => { setTheme(e.target.value); onThemeChange(e.target.value); }} style={{ padding: 9, borderRadius: 8, background: theme === "gold" ? "#332711" : theme === "ocean" ? "#102b40" : "#21172f", color: "white" }}>
         <option value="midnight">Midnight Purple</option><option value="gold">Royal Gold</option><option value="ocean">Ocean Blue</option>
       </select>
     </div>
