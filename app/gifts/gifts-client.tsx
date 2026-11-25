@@ -111,7 +111,7 @@ export default function GiftsClient({ userId }: { userId: string }) {
             <input required maxLength={100} value={title} onChange={(event) => setTitle(event.target.value)} style={{ display: "block", width: "100%", marginTop: 6, padding: 12, borderRadius: 10 }} />
           </label>
           <label>Secret message
-            <textarea required maxLength={5000} rows={5} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Write your special message..." style={{ display: "block", width: "100%", marginTop: 6, padding: 12, borderRadius: 10, width: "100%" }} />
+            <textarea required maxLength={5000} rows={5} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Write your special message..." style={{ display: "block", width: "100%", marginTop: 6, padding: 12, borderRadius: 10 }} />
           </label>
           <button className="button" type="submit" disabled={busy || !recipientId || !body.trim()}>{busy ? "Please wait..." : "Send locked gift"}</button>
         </form>
