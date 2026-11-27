@@ -8,6 +8,9 @@ type Profile = {
   username: string | null;
   display_name: string | null;
   bio: string | null;
+  team_role?: string | null;
+  current_activity?: string | null;
+  availability_status?: "available" | "busy" | "away" | "offline" | null;
 };
 
 type ContactRequest = {
@@ -52,7 +55,7 @@ export default function ContactsClient({ userId }: { userId: string }) {
     if (otherIds.length) {
       const { data: people, error: peopleError } = await supabase
         .from("profiles")
-        .select("id, username, display_name, bio")
+        .select("id, username, display_name, bio, team_role, current_activity, availability_status")
         .in("id", otherIds);
 
       if (peopleError) {
@@ -179,6 +182,8 @@ export default function ContactsClient({ userId }: { userId: string }) {
             <div key={person.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, borderTop: "1px solid var(--line)", padding: "14px 0" }}>
               <div>
                 <strong>{person.display_name || "CONNECT member"}</strong>
+                <div className="muted" style={{ fontSize: ".8rem" }}>{person.availability_status === "available" ? "● Available" : person.availability_status === "busy" ? "● Busy" : person.availability_status === "away" ? "● Away" : "○ Offline"}{person.team_role ? ` · ${person.team_role}` : ""}</div>
+                {person.current_activity && <div className="muted" style={{ fontSize: ".82rem" }}>{person.current_activity}</div>}
                 {person.username && <div className="muted">@{person.username}</div>}
                 {person.bio && <div className="muted" style={{ fontSize: ".85rem" }}>{person.bio}</div>}
               </div>
@@ -207,7 +212,7 @@ export default function ContactsClient({ userId }: { userId: string }) {
         <h2 style={{ marginTop: 0 }}>Your contacts <span className="muted">({accepted.length})</span></h2>
         {loading ? <p className="muted">Loading contacts…</p> : accepted.length === 0 ? <p className="muted">Your accepted contacts will appear here.</p> : accepted.map((request) => {
           const otherId = request.sender_id === userId ? request.recipient_id : request.sender_id;
-          return <div key={request.id} style={{ borderTop: "1px solid var(--line)", padding: "14px 0" }}><strong>{personName(otherId)}</strong>{profiles[otherId]?.username && <div className="muted">@{profiles[otherId].username}</div>}</div>;
+          return <div key={request.id} style={{ borderTop: "1px solid var(--line)", padding: "14px 0" }}><strong>{personName(otherId)}</strong><div className="muted" style={{ fontSize: ".8rem" }}>{profiles[otherId]?.availability_status === "available" ? "● Available" : profiles[otherId]?.availability_status === "busy" ? "● Busy" : profiles[otherId]?.availability_status === "away" ? "● Away" : "○ Offline"}{profiles[otherId]?.team_role ? ` · ${profiles[otherId].team_role}` : ""}</div>{profiles[otherId]?.current_activity && <div className="muted">{profiles[otherId].current_activity}</div>}{profiles[otherId]?.username && <div className="muted">@{profiles[otherId].username}</div>}</div>;
         })}
       </section>
 
