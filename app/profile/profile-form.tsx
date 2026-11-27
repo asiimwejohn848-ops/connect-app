@@ -9,6 +9,9 @@ type Profile = {
   display_name: string | null;
   bio: string | null;
   avatar_url?: string | null;
+  team_role?: string | null;
+  current_activity?: string | null;
+  availability_status?: "available" | "busy" | "away" | "offline" | null;
 };
 
 export default function ProfileForm({ initialProfile }: { initialProfile: Profile }) {
@@ -16,6 +19,9 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
   const [username, setUsername] = useState(initialProfile.username ?? "");
   const [bio, setBio] = useState(initialProfile.bio ?? "");
   const [avatarUrl, setAvatarUrl] = useState(initialProfile.avatar_url ?? "");
+  const [teamRole, setTeamRole] = useState(initialProfile.team_role ?? "");
+  const [currentActivity, setCurrentActivity] = useState(initialProfile.current_activity ?? "");
+  const [availability, setAvailability] = useState(initialProfile.availability_status ?? "available");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -88,6 +94,11 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
       setMessage("Username must be 3–24 characters using lowercase letters, numbers or underscores.");
       return;
     }
+    if (teamRole.trim().length > 80 || currentActivity.trim().length > 120) {
+      setIsError(true);
+      setMessage("Team role must be 80 characters or fewer and current activity 120 characters or fewer.");
+      return;
+    }
     if (cleanBio.length > 160) {
       setIsError(true);
       setMessage("Bio must be 160 characters or fewer.");
@@ -103,7 +114,7 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
       return;
     }
     const { error } = await supabase.from("profiles")
-      .update({ display_name: cleanName, username: cleanUsername || null, bio: cleanBio || null })
+      .update({ display_name: cleanName, username: cleanUsername || null, bio: cleanBio || null, team_role: teamRole.trim(), current_activity: currentActivity.trim(), availability_status: availability })
       .eq("id", user.id);
     setSaving(false);
     if (error) {
@@ -136,6 +147,24 @@ export default function ProfileForm({ initialProfile }: { initialProfile: Profil
         <label htmlFor="username">Username</label>
         <input id="username" value={username} onChange={(event) => setUsername(event.target.value.toLowerCase())} maxLength={24} minLength={3} pattern="[a-z0-9_]{3,24}" placeholder="e.g. john_asiimwe" />
         <small className="muted">Optional for now. 3–24 lowercase letters, numbers or underscores.</small>
+      </div>
+      <div className="field">
+        <label htmlFor="teamRole">Team role (optional)</label>
+        <input id="teamRole" value={teamRole} onChange={(event) => setTeamRole(event.target.value)} maxLength={80} placeholder="e.g. Project lead, designer, researcher" />
+      </div>
+      <div className="field">
+        <label htmlFor="currentActivity">What are you working on? (optional)</label>
+        <input id="currentActivity" value={currentActivity} onChange={(event) => setCurrentActivity(event.target.value)} maxLength={120} placeholder="A short note about your current work" />
+      </div>
+      <div className="field">
+        <label htmlFor="availability">Your availability</label>
+        <select id="availability" value={availability} onChange={(event) => setAvailability(event.target.value as "available" | "busy" | "away" | "offline")}>
+          <option value="available">Available</option>
+          <option value="busy">Busy</option>
+          <option value="away">Away</option>
+          <option value="offline">Appear offline</option>
+        </select>
+        <small className="muted">You control what other signed-in CONNECT members can see.</small>
       </div>
       <div className="field">
         <label htmlFor="bio">About you</label>
