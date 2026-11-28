@@ -27,6 +27,18 @@ create table if not exists public.cizzy_products (
   updated_at timestamptz not null default now()
 );
 
+grant select on public.cizzy_products to anon, authenticated;
+grant insert, update, delete on public.cizzy_products to authenticated;
+grant select, insert, update, delete on public.cizzy_staff to authenticated;
+
+insert into public.cizzy_products
+  (slug, name, tagline, description, category, status, featured, sort_order)
+values
+  ('connect', 'CONNECT', 'A more meaningful way to connect.',
+   'A communication experience being developed by Cizzy Technologies, with a vision to make everyday conversations more expressive and accessible.',
+   'Communication', 'in_development', true, 1)
+on conflict (slug) do nothing;
+
 create index if not exists cizzy_products_public_order
   on public.cizzy_products(status, featured desc, sort_order, created_at desc);
 
