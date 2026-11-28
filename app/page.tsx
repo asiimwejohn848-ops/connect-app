@@ -29,7 +29,10 @@ export default async function HomePage() {
       .select("id,slug,name,tagline,description,category,status,featured,logo_url,website_url,android_url,ios_url,screenshots,sort_order")
       .neq("status", "draft")
       .order("featured", { ascending: false }).order("sort_order").order("created_at", { ascending: false });
-    if (data?.length) products = data as Product[];
+    if (data?.length) {
+      products = data as Product[];
+      if (!products.some(product => product.slug === "connect")) products = [...products, fallbackProducts[0]];
+    }
   } catch { /* Keep the public company page useful before Supabase is configured. */ }
 
   return (
@@ -100,7 +103,7 @@ export default async function HomePage() {
       </section>
 
       <footer className="company-footer">
-        <div className="footer-upper"><Link className="company-brand" href="/"><span className="company-monogram">C</span><span>CIZZY<span className="brand-accent">.</span><small>TECHNOLOGIES</small></span></Link><p>Ideas become technology.<br />Technology moves the world.</p><a href="#top" onClick={(e)=>{e.preventDefault();window.scrollTo({top:0,behavior:"smooth"});}}>BACK TO TOP ↑</a></div>
+        <div className="footer-upper"><Link className="company-brand" href="/"><span className="company-monogram">C</span><span>CIZZY<span className="brand-accent">.</span><small>TECHNOLOGIES</small></span></Link><p>Ideas become technology.<br />Technology moves the world.</p><a href="#">BACK TO TOP ↑</a></div>
         <div className="footer-lower"><span>© {new Date().getFullYear()} Cizzy Technologies. All rights reserved.</span><span>Built with curiosity in Uganda.</span><Link href="/admin">Team access ↗</Link></div>
       </footer>
     </main>
