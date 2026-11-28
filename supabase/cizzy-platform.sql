@@ -15,7 +15,7 @@ create table if not exists public.cizzy_products (
   description text not null default '',
   category text not null default 'Application',
   status text not null default 'in_development'
-    check (status in ('in_development', 'coming_soon', 'published')),
+    check (status in ('draft', 'in_development', 'coming_soon', 'available')),
   featured boolean not null default false,
   logo_url text not null default '',
   website_url text not null default '',
@@ -79,10 +79,10 @@ create policy "Owners can remove team members"
 on public.cizzy_staff for delete to authenticated
 using (public.is_cizzy_owner() and user_id <> (select auth.uid()));
 
-drop policy if exists "Public can view published products" on public.cizzy_products;
-create policy "Public can view published products"
+drop policy if exists "Public can view non-draft products" on public.cizzy_products;
+create policy "Public can view non-draft products"
 on public.cizzy_products for select to anon, authenticated
-using (status = 'published' or public.is_cizzy_staff());
+using (status <> 'draft' or public.is_cizzy_staff());
 
 drop policy if exists "Staff can add products" on public.cizzy_products;
 create policy "Staff can add products"
@@ -100,7 +100,6 @@ create policy "Staff can delete products"
 on public.cizzy_products for delete to authenticated
 using (public.is_cizzy_staff());
 
--- Public product imagery; uploads and deletion remain staff-only.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('cizzy-product-media', 'cizzy-product-media', true, 5242880,
   array['image/png','image/jpeg','image/webp','image/svg+xml'])
@@ -128,7 +127,6 @@ create policy "Cizzy staff can delete product media"
 on storage.objects for delete to authenticated
 using (bucket_id = 'cizzy-product-media' and public.is_cizzy_staff());
 
--- Bootstrap: after creating and confirming your account, copy its UUID
--- from Supabase Authentication > Users and run:
+-- Bootstrap the first owner after creating and confirming their account:
 -- insert into public.cizzy_staff (user_id, role)
 -- values ('YOUR-AUTH-USER-UUID', 'owner');
