@@ -22,8 +22,8 @@ const statusText: Record<Product["status"], string> = {
 };
 const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-export default function AdminConsole({ userEmail, role, initialProducts, initialStaff, initialError }: {
-  userEmail: string; role: "owner" | "editor"; initialProducts: Product[]; initialStaff: Staff[]; initialError: string;
+export default function AdminConsole({ currentUserId, userEmail, role, initialProducts, initialStaff, initialError }: {
+  currentUserId: string; userEmail: string; role: "owner" | "editor"; initialProducts: Product[]; initialStaff: Staff[]; initialError: string;
 }) {
   const [products, setProducts] = useState(initialProducts);
   const [staff, setStaff] = useState(initialStaff);
@@ -194,7 +194,7 @@ export default function AdminConsole({ userEmail, role, initialProducts, initial
           <div className="studio-list-heading"><div><span>ACCESS CONTROL</span><h2>Authorised team members</h2></div><span>{staff.length} MEMBERS</span></div>
           <p className="studio-team-help">Team members must first create and confirm their own account through the sign-in page. Add their Supabase Auth user UUID here to grant access. Editors can manage products; owners can also manage team access.</p>
           <form className="studio-team-form" onSubmit={addTeamMember}><label>Supabase Auth user UUID<input required value={teamId} onChange={e=>setTeamId(e.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></label><label>Role<select value={teamRole} onChange={e=>setTeamRole(e.target.value as "owner"|"editor")}><option value="editor">Editor — manage products</option><option value="owner">Owner — products and team</option></select></label><button className="company-button" disabled={busy}>Grant access ↗</button></form>
-          <div className="studio-product-list">{staff.map(member=><article className="studio-product-row" key={member.user_id}><div className="studio-product-icon">♧</div><div className="studio-product-name"><b>{member.role === "owner" ? "Workspace owner" : "Team editor"}</b><span>{member.user_id}</span></div><select value={member.role} disabled={busy || member.user_id === ""} onChange={e=>changeTeamRole(member,e.target.value as "owner"|"editor")}><option value="editor">Editor</option><option value="owner">Owner</option></select><button className="danger-text" disabled={busy} onClick={()=>removeTeamMember(member)}>Remove access</button></article>)}</div>
+          <div className="studio-product-list">{staff.map(member=><article className="studio-product-row" key={member.user_id}><div className="studio-product-icon">♧</div><div className="studio-product-name"><b>{member.role === "owner" ? "Workspace owner" : "Team editor"}</b><span>{member.user_id}</span></div><select value={member.role} disabled={busy || member.user_id === currentUserId} onChange={e=>changeTeamRole(member,e.target.value as "owner"|"editor")}><option value="editor">Editor</option><option value="owner">Owner</option></select><button className="danger-text" disabled={busy || member.user_id === currentUserId} onClick={()=>removeTeamMember(member)}>Remove access</button></article>)}</div>
         </section>}
       </div>
     </section>
