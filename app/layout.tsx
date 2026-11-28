@@ -3,7 +3,7 @@ import "./globals.css";
 import "./cizzy.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://cizzytechnologies.com"),
+  ...(process.env.NEXT_PUBLIC_SITE_URL ? { metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL) } : {}),
   title: {
     default: "Cizzy Technologies — Ideas Become Technology",
     template: "%s | Cizzy Technologies",
