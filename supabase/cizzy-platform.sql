@@ -64,7 +64,7 @@ $$;
 
 revoke all on function public.is_cizzy_staff() from public;
 revoke all on function public.is_cizzy_owner() from public;
-grant execute on function public.is_cizzy_staff() to authenticated;
+grant execute on function public.is_cizzy_staff() to anon, authenticated;
 grant execute on function public.is_cizzy_owner() to authenticated;
 
 alter table public.cizzy_staff enable row level security;
