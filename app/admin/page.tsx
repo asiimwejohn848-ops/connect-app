@@ -20,5 +20,5 @@ export default async function AdminPage() {
   const { data: staff } = membership.role === "owner"
     ? await supabase.from("cizzy_staff").select("user_id,role,created_at").order("created_at")
     : { data: [] };
-  return <AdminConsole userEmail={user.email ?? ""} role={membership.role} initialProducts={products ?? []} initialStaff={staff ?? []} initialError={productsError?.message ?? ""} />;
+  return <AdminConsole currentUserId={user.id} userEmail={user.email ?? ""} role={membership.role} initialProducts={products ?? []} initialStaff={staff ?? []} initialError={productsError?.message ?? ""} />;
 }
